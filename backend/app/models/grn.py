@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 import enum
 from sqlalchemy import Column, String, DateTime, Enum, Numeric, Text, JSON, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
@@ -28,12 +28,12 @@ class GRN(Base):
     delivery_challan_no = Column(String, nullable=True)
     vehicle_number = Column(String, nullable=True)
     received_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    received_date = Column(DateTime, default=datetime.utcnow)
+    received_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     inspection_date = Column(DateTime, nullable=True)
     inspected_by = Column(UUID(as_uuid=True), nullable=True)
     items = Column(JSON, default=list)
     remarks = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     documents = Column(JSON, default=list)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
