@@ -1,5 +1,5 @@
+from datetime import datetime, timezone
 import uuid
-from datetime import datetime, timezone, timezone
 import enum
 from sqlalchemy import Column, String, DateTime, Enum, Numeric, Text, JSON, ForeignKey, Boolean, Date
 from sqlalchemy.dialects.postgresql import UUID
@@ -55,4 +55,4 @@ class Invoice(Base):
     documents = Column(JSON, default=list)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

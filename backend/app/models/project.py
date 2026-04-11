@@ -1,5 +1,5 @@
+from datetime import datetime, timezone
 import uuid
-from datetime import datetime, timezone, timezone
 import enum
 from sqlalchemy import Column, String, DateTime, Enum, Numeric, Text, JSON, Date
 from sqlalchemy.dialects.postgresql import UUID
@@ -49,4 +49,4 @@ class Project(Base):
     pan = Column(String, nullable=True)
     metadata_ = Column("metadata", JSON, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

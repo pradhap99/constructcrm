@@ -1,5 +1,5 @@
+from datetime import datetime, timezone
 import uuid
-from datetime import datetime, timezone, timezone
 import enum
 from sqlalchemy import Column, String, DateTime, Enum, Numeric, Text, JSON, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
@@ -41,4 +41,4 @@ class ChangeOrder(Base):
     approved_by = Column(UUID(as_uuid=True), nullable=True)
     documents = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
