@@ -17,6 +17,8 @@ from app.api.v1.endpoints import (
     change_orders,
     billings,
     dashboard,
+    ai_parser,
+    seed,
 )
 
 api_router = APIRouter()
@@ -38,3 +40,5 @@ api_router.include_router(submittals.router)
 api_router.include_router(change_orders.router)
 api_router.include_router(billings.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(ai_parser.router)
+api_router.include_router(seed.router)
