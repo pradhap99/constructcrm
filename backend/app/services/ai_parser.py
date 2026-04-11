@@ -22,7 +22,8 @@ def parse_invoice_text(text: str) -> Dict[str, Any]:
     if m:
         result["gstin"] = m.group(1)
 
-    m = re.search(r'(?:Total|Grand Total|Amount)\s*[:\-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+(?:\.\d{2})?)', text, re.IGNORECASE)
+    # Use possessive-style groups to avoid ReDoS on repeated spaces
+    m = re.search(r'(?:Grand Total|Total Amount|Total|Amount)\s{0,10}[:\-]?\s{0,10}(?:Rs\.?|INR|₹)?\s{0,10}([\d,]+(?:\.\d{2})?)', text, re.IGNORECASE)
     if m:
         result["total_amount"] = float(m.group(1).replace(",", ""))
 
