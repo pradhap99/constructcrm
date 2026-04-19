@@ -37,7 +37,7 @@ const navItems = [
   { href: '/analytics', label: 'Analytics', icon: TrendingUp },
 ]
 
-export function Sidebar() {
+export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -70,6 +70,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group',
                 isActive
