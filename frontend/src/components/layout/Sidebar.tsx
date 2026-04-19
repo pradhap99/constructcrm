@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Brain, Building2, Target, ClipboardList,
   FileSearch, Users, ShoppingCart, Package, Receipt,
   CalendarDays, BarChart3, FileCheck, GitBranch, Wallet, TrendingUp,
-  HardHat, ChevronLeft, ChevronRight,
+  HardHat, ChevronLeft, ChevronRight, Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
@@ -33,6 +33,7 @@ const navItems = [
   { href: '/submittals', label: 'Submittals', icon: FileCheck },
   { href: '/change-orders', label: 'Change Orders', icon: GitBranch },
   { href: '/billing', label: 'Billing', icon: Wallet },
+  { href: '/materials', label: 'Materials', icon: Layers },
   { href: '/analytics', label: 'Analytics', icon: TrendingUp },
 ]
 
