@@ -170,6 +170,23 @@ export const analytics = {
   fullReport: () => apiClient.get<SpendAnalytics>('/analytics/spend'),
 }
 
+// Documents
+export const documents = {
+  upload: (file: File, projectId?: string) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const params = projectId ? `?project_id=${projectId}` : ''
+    return apiClient.post<import('./types').Document>(`/documents/upload${params}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  list: (projectId?: string) =>
+    apiClient.get<import('./types').Document[]>('/documents/', { params: projectId ? { project_id: projectId } : {} }),
+  get: (id: string) => apiClient.get<import('./types').Document>(`/documents/${id}`),
+  downloadUrl: (id: string) => `${BASE_URL}/documents/${id}/download`,
+  statusUrl: (id: string) => `${BASE_URL}/documents/${id}/status`,
+}
+
 // Notifications
 export const notifications = {
   list: (params?: { project_id?: string; is_seen?: boolean }) =>

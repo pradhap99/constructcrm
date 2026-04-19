@@ -25,6 +25,7 @@ from app.api.v1.endpoints import (
     team,
     clients,
     bills,
+    documents,
 )
 
 api_router = APIRouter()
@@ -54,3 +55,4 @@ api_router.include_router(agent_jobs.router)
 api_router.include_router(team.router)
 api_router.include_router(clients.router)
 api_router.include_router(bills.router)
+api_router.include_router(documents.router)

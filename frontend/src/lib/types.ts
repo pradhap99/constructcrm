@@ -411,6 +411,50 @@ export interface AIParserResult {
   rawText?: string
 }
 
+export interface Document {
+  id: string
+  original_name: string
+  status: 'uploaded' | 'processing' | 'done' | 'failed'
+  project_id?: string | null
+  created_by: string
+  extracted_data?: DocumentExtractedData | null
+  error_message?: string | null
+  excel_url?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentExtractedData {
+  document_type: string
+  vendor_name?: string | null
+  vendor_gstin?: string | null
+  quote_number?: string | null
+  quote_date?: string | null
+  valid_until?: string | null
+  total_amount?: number
+  overall_confidence?: number
+  items: DocumentItem[]
+}
+
+export interface DocumentItem {
+  section?: string
+  description: string
+  specification?: string
+  unit: string
+  quantity: number
+  rate: number
+  gst_percent: number
+  amount: number
+}
+
+export interface DocumentStatusEvent {
+  id: string
+  status: 'uploaded' | 'processing' | 'done' | 'failed'
+  extracted_data?: DocumentExtractedData | null
+  excel_url?: string | null
+  error_message?: string | null
+}
+
 export interface Notification {
   id: string
   title: string

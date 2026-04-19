@@ -1,35 +1,25 @@
 'use client'
-import { useState, useCallback, useRef } from 'react'
-import { Upload, FileText, CheckCircle, Edit3, Send, Download, Brain, Loader2, Star } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { Upload, FileText, CheckCircle, Edit3, Send, Download, Brain, Loader2, Star, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { cn, formatCurrency } from '@/lib/utils'
-import { aiParser } from '@/lib/api'
-import type { ExtractedItem, AIParserResult } from '@/lib/types'
+import { documents as docsApi } from '@/lib/api'
+import type { DocumentExtractedData, DocumentItem, DocumentStatusEvent } from '@/lib/types'
 import { toast } from 'sonner'
 
 const STEPS = ['Upload', 'AI Extraction', 'Review & Edit', 'Commit to PO']
 
-const MOCK_RESULT: AIParserResult = {
-  sessionId: 'mock-001',
-  fileName: 'Tata_Steel_Quote_Jan2024.pdf',
-  documentType: 'vendor_quotation',
-  extractedAt: new Date().toISOString(),
-  vendorName: 'Tata Steel Ltd',
-  vendorGstin: '27AAACT2727Q1ZW',
-  quoteNumber: 'TSL/Q/2024/0456',
-  quoteDate: '2024-01-10',
-  validUntil: '2024-02-10',
-  totalAmount: 2456800,
-  overallConfidence: 0.91,
-  items: [
-    { id: '1', itemDescription: 'TMT Bars Fe500D 12mm', unit: 'MT', quantity: 25, unitRate: 58500, gstPercent: 18, totalAmount: 1462500, confidence: 0.97, isEdited: false },
-    { id: '2', itemDescription: 'TMT Bars Fe500D 16mm', unit: 'MT', quantity: 15, unitRate: 59200, gstPercent: 18, totalAmount: 888000, confidence: 0.94, isEdited: false },
-    { id: '3', itemDescription: 'Binding Wire 16 Gauge', unit: 'KG', quantity: 200, unitRate: 85, gstPercent: 18, totalAmount: 17000, confidence: 0.78, isEdited: false },
-    { id: '4', itemDescription: 'MS Plates 6mm thickness', unit: 'MT', quantity: 2, unitRate: 62000, gstPercent: 18, totalAmount: 124000, confidence: 0.88, isEdited: false },
-  ],
+// Editable item (adds id + isEdited to DocumentItem)
+interface EditableItem extends DocumentItem {
+  _id: string
+  isEdited: boolean
+}
+
+function toEditable(items: DocumentItem[]): EditableItem[] {
+  return items.map((it, i) => ({ ...it, _id: String(i), isEdited: false }))
 }
 
 function ConfidenceBadge({ value }: { value: number }) {
@@ -44,54 +34,117 @@ function ConfidenceBadge({ value }: { value: number }) {
   )
 }
 
+function StatusPulse({ status }: { status: string }) {
+  const map: Record<string, { color: string; label: string }> = {
+    uploaded:   { color: 'bg-slate-400',  label: 'Queued'      },
+    processing: { color: 'bg-indigo-500', label: 'Processing…' },
+    done:       { color: 'bg-green-500',  label: 'Done'        },
+    failed:     { color: 'bg-red-500',    label: 'Failed'      },
+  }
+  const cfg = map[status] ?? map.uploaded
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn('inline-block w-2 h-2 rounded-full', cfg.color, status === 'processing' && 'animate-pulse')} />
+      <span className="text-sm text-muted-foreground">{cfg.label}</span>
+    </div>
+  )
+}
+
 export default function AIReaderPage() {
-  const [step, setStep] = useState(0)
+  const [step, setStep]           = useState(0)
   const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
-  const [result, setResult] = useState<AIParserResult | null>(null)
-  const [items, setItems] = useState<ExtractedItem[]>([])
-  const [fileName, setFileName] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [docStatus, setDocStatus] = useState<string>('')
+  const [docId, setDocId]         = useState<string | null>(null)
+  const [excelUrl, setExcelUrl]   = useState<string | null>(null)
+  const [extracted, setExtracted] = useState<DocumentExtractedData | null>(null)
+  const [items, setItems]         = useState<EditableItem[]>([])
+  const [fileName, setFileName]   = useState('')
+  const [error, setError]         = useState<string | null>(null)
+  const fileRef  = useRef<HTMLInputElement>(null)
+  const esRef    = useRef<EventSource | null>(null)
+
+  // Clean up SSE on unmount
+  useEffect(() => () => esRef.current?.close(), [])
+
+  const openSSE = useCallback((id: string) => {
+    if (esRef.current) esRef.current.close()
+    const url = docsApi.statusUrl(id)
+    const es = new EventSource(url)
+    esRef.current = es
+
+    es.onmessage = (e) => {
+      try {
+        const data: DocumentStatusEvent = JSON.parse(e.data)
+        setDocStatus(data.status)
+
+        if (data.status === 'done' && data.extracted_data) {
+          setExtracted(data.extracted_data)
+          setItems(toEditable(data.extracted_data.items ?? []))
+          if (data.excel_url) setExcelUrl(data.excel_url)
+          setUploading(false)
+          setStep(2)
+          es.close()
+          toast.success('AI extraction complete!', { description: `${data.extracted_data.items?.length ?? 0} items extracted` })
+        }
+
+        if (data.status === 'failed') {
+          setError(data.error_message ?? 'Processing failed')
+          setUploading(false)
+          es.close()
+          toast.error('Extraction failed', { description: data.error_message ?? undefined })
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    es.onerror = () => {
+      es.close()
+      setUploading(false)
+    }
+  }, [])
 
   const processFile = useCallback(async (file: File) => {
     setFileName(file.name)
     setUploading(true)
+    setError(null)
+    setExtracted(null)
+    setItems([])
+    setExcelUrl(null)
     setStep(1)
+
     try {
-      const res = await aiParser.upload(file)
-      setResult(res.data)
-      setItems(res.data.items)
-    } catch {
-      // Use mock data for demo
-      setResult(MOCK_RESULT)
-      setItems(MOCK_RESULT.items)
-    } finally {
+      const res = await docsApi.upload(file)
+      const id = res.data.id
+      setDocId(id)
+      setDocStatus(res.data.status)
+      openSSE(id)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Upload failed'
+      setError(msg)
       setUploading(false)
-      setStep(2)
+      toast.error('Upload failed', { description: msg })
     }
-  }, [])
+  }, [openSSE])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    setDragOver(false)
     const file = e.dataTransfer.files[0]
     if (file) processFile(file)
   }, [processFile])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) processFile(file)
-  }
-
-  const updateItem = (id: string, field: keyof ExtractedItem, value: string | number) => {
-    setItems(prev => prev.map(item =>
-      item.id === id ? { ...item, [field]: value, isEdited: true } : item
+  const updateItem = (id: string, field: keyof DocumentItem, value: string | number) => {
+    setItems(prev => prev.map(it =>
+      it._id === id ? { ...it, [field]: value, isEdited: true } : it
     ))
   }
 
-  const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitRate * (1 + i.gstPercent / 100), 0)
-  const minRate = Math.min(...items.map(i => i.unitRate))
-  const maxRate = Math.max(...items.map(i => i.unitRate))
+  const reset = () => {
+    esRef.current?.close()
+    setStep(0); setDocId(null); setDocStatus(''); setExtracted(null)
+    setItems([]); setExcelUrl(null); setError(null); setUploading(false)
+  }
+
+  const minRate = items.length ? Math.min(...items.map(i => i.rate)) : 0
+  const maxRate = items.length ? Math.max(...items.map(i => i.rate)) : 0
+  const totalAmount = items.reduce((s, i) => s + i.quantity * i.rate * (1 + i.gst_percent / 100), 0)
 
   return (
     <div className="space-y-4">
@@ -107,7 +160,7 @@ export default function AIReaderPage() {
               <Star className="w-3 h-3 mr-1" /> STAR FEATURE
             </Badge>
           </h2>
-          <p className="text-sm text-muted-foreground">Upload vendor quotations — AI extracts line items automatically</p>
+          <p className="text-sm text-muted-foreground">Upload vendor quotations — Claude AI extracts BOQ line items automatically</p>
         </div>
       </div>
 
@@ -128,31 +181,27 @@ export default function AIReaderPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-280px)]">
-        {/* LEFT: Upload + Document Viewer */}
+        {/* LEFT: Upload + Document info */}
         <div className="flex flex-col gap-4 overflow-hidden">
           {step === 0 && (
             <Card className="flex-1 flex flex-col">
               <CardContent className="flex-1 flex flex-col items-center justify-center p-8">
                 <div
                   onDrop={handleDrop}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                  onDragLeave={() => setDragOver(false)}
+                  onDragOver={(e) => e.preventDefault()}
                   onClick={() => fileRef.current?.click()}
-                  className={cn(
-                    'w-full flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer transition-all min-h-[300px]',
-                    dragOver ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950' : 'border-muted-foreground/30 hover:border-indigo-400 hover:bg-muted/50'
-                  )}
+                  className="w-full flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer transition-all min-h-[300px] border-muted-foreground/30 hover:border-indigo-400 hover:bg-muted/50"
                 >
                   <Upload className="w-12 h-12 text-indigo-400" />
                   <div className="text-center">
                     <p className="font-semibold text-lg">Drop vendor quotation here</p>
-                    <p className="text-muted-foreground text-sm mt-1">PDF, Excel, Word, or image files</p>
+                    <p className="text-muted-foreground text-sm mt-1">PDF, Excel, Word, or text files</p>
                   </div>
                   <Button variant="outline" type="button">Browse Files</Button>
-                  <input ref={fileRef} type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.png,.jpg" onChange={handleFileChange} />
+                  <input ref={fileRef} type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.txt,.csv" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
                 </div>
                 <div className="mt-4 flex gap-2 flex-wrap justify-center">
-                  {['PDF', 'Excel', 'Word', 'PNG', 'JPG'].map(t => (
+                  {['PDF', 'Excel', 'Word', 'TXT', 'CSV'].map(t => (
                     <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
                   ))}
                 </div>
@@ -164,45 +213,59 @@ export default function AIReaderPage() {
             <Card className="flex-1 overflow-hidden flex flex-col">
               <CardHeader className="pb-2 flex-row items-center gap-3">
                 <FileText className="w-5 h-5 text-indigo-500" />
-                <CardTitle className="text-sm font-medium truncate">{result?.fileName ?? fileName}</CardTitle>
-                {result && <Badge variant="success" className="ml-auto shrink-0">Processed</Badge>}
+                <CardTitle className="text-sm font-medium truncate flex-1">{fileName}</CardTitle>
+                {docStatus && <StatusPulse status={docStatus} />}
               </CardHeader>
               <CardContent className="flex-1 overflow-auto space-y-3">
                 {uploading && (
                   <div className="flex flex-col items-center gap-4 py-12">
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                    <p className="font-medium">AI is extracting data...</p>
+                    <p className="font-medium">Claude AI is extracting BOQ data…</p>
                     <Progress value={65} className="w-48" />
+                    <p className="text-xs text-muted-foreground">This usually takes 10–30 seconds</p>
                   </div>
                 )}
-                {result && !uploading && (
+                {error && (
+                  <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg text-red-600">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <p className="text-sm">{error}</p>
+                  </div>
+                )}
+                {extracted && !uploading && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="bg-muted rounded-lg p-3">
                         <p className="text-xs text-muted-foreground">Vendor</p>
-                        <p className="font-medium">{result.vendorName}</p>
+                        <p className="font-medium">{extracted.vendor_name ?? '—'}</p>
                       </div>
                       <div className="bg-muted rounded-lg p-3">
                         <p className="text-xs text-muted-foreground">GSTIN</p>
-                        <p className="font-mono text-xs">{result.vendorGstin}</p>
+                        <p className="font-mono text-xs">{extracted.vendor_gstin ?? '—'}</p>
                       </div>
                       <div className="bg-muted rounded-lg p-3">
                         <p className="text-xs text-muted-foreground">Quote No.</p>
-                        <p className="font-medium">{result.quoteNumber}</p>
+                        <p className="font-medium">{extracted.quote_number ?? '—'}</p>
                       </div>
                       <div className="bg-muted rounded-lg p-3">
                         <p className="text-xs text-muted-foreground">Valid Until</p>
-                        <p className="font-medium">{result.validUntil}</p>
+                        <p className="font-medium">{extracted.valid_until ?? '—'}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3">
                       <span className="text-sm font-medium">AI Confidence</span>
                       <div className="flex items-center gap-2">
-                        <Progress value={result.overallConfidence * 100} className="w-24 h-2" />
-                        <ConfidenceBadge value={result.overallConfidence} />
+                        <Progress value={(extracted.overall_confidence ?? 0) * 100} className="w-24 h-2" />
+                        <ConfidenceBadge value={extracted.overall_confidence ?? 0} />
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" className="w-full" onClick={() => { setStep(0); setResult(null); setItems([]) }}>
+                    {excelUrl && (
+                      <a href={excelUrl} download>
+                        <Button variant="outline" size="sm" className="w-full gap-2 text-green-700 border-green-300 hover:bg-green-50">
+                          <Download className="w-3 h-3" /> Download Excel (BOQ Extract)
+                        </Button>
+                      </a>
+                    )}
+                    <Button variant="outline" size="sm" className="w-full" onClick={reset}>
                       Upload Another File
                     </Button>
                   </div>
@@ -212,19 +275,19 @@ export default function AIReaderPage() {
           )}
         </div>
 
-        {/* RIGHT: Extracted Data Table */}
+        {/* RIGHT: Extracted Items Table */}
         <div className="flex flex-col gap-4 overflow-hidden">
           <Card className="flex-1 overflow-hidden flex flex-col">
             <CardHeader className="pb-2 flex-row items-center justify-between">
               <CardTitle className="text-sm">
                 {step < 2 ? 'Extracted Items' : `Extracted Items (${items.length})`}
               </CardTitle>
-              {step >= 2 && (
-                <div className="flex gap-2">
+              {step >= 2 && excelUrl && (
+                <a href={excelUrl} download>
                   <Button variant="outline" size="sm" className="gap-1 text-xs">
                     <Download className="w-3 h-3" /> Export Excel
                   </Button>
-                </div>
+                </a>
               )}
             </CardHeader>
             <CardContent className="flex-1 overflow-auto p-0">
@@ -237,7 +300,7 @@ export default function AIReaderPage() {
               {uploading && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 p-8">
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-                  <p className="text-sm text-muted-foreground">Processing with AI...</p>
+                  <p className="text-sm text-muted-foreground">Claude is reading your document…</p>
                 </div>
               )}
               {step >= 2 && items.length > 0 && (
@@ -245,32 +308,32 @@ export default function AIReaderPage() {
                   <table className="w-full text-xs">
                     <thead className="bg-muted sticky top-0">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium">Item Description</th>
+                        <th className="px-3 py-2 text-left font-medium">Description</th>
                         <th className="px-3 py-2 text-center font-medium">Unit</th>
                         <th className="px-3 py-2 text-right font-medium">Qty</th>
                         <th className="px-3 py-2 text-right font-medium">Rate (₹)</th>
                         <th className="px-3 py-2 text-center font-medium">GST%</th>
                         <th className="px-3 py-2 text-right font-medium">Total</th>
-                        <th className="px-3 py-2 text-center font-medium">Conf.</th>
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((item) => {
-                        const isL1 = item.unitRate === minRate
-                        const isH1 = item.unitRate === maxRate && minRate !== maxRate
-                        const total = item.quantity * item.unitRate * (1 + item.gstPercent / 100)
+                        const isL1 = item.rate === minRate
+                        const isH1 = item.rate === maxRate && minRate !== maxRate
+                        const total = item.quantity * item.rate * (1 + item.gst_percent / 100)
                         return (
-                          <tr key={item.id} className={cn(
+                          <tr key={item._id} className={cn(
                             'border-b transition-colors',
                             isL1 ? 'bg-green-50 dark:bg-green-950' : isH1 ? 'bg-red-50 dark:bg-red-950' : 'hover:bg-muted/50'
                           )}>
                             <td className="px-3 py-2">
                               <input
                                 className="w-full bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-400 rounded px-1"
-                                value={item.itemDescription}
-                                onChange={e => updateItem(item.id, 'itemDescription', e.target.value)}
+                                value={item.description}
+                                onChange={e => updateItem(item._id, 'description', e.target.value)}
                               />
-                              {item.isEdited && <span className="text-indigo-400 text-[10px]">✎ edited</span>}
+                              {item.section && <span className="text-muted-foreground text-[10px]">{item.section}</span>}
+                              {item.isEdited && <span className="text-indigo-400 text-[10px] ml-1">✎</span>}
                             </td>
                             <td className="px-3 py-2 text-center">{item.unit}</td>
                             <td className="px-3 py-2 text-right">
@@ -278,22 +341,21 @@ export default function AIReaderPage() {
                                 type="number"
                                 className="w-16 bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-400 rounded px-1 text-right"
                                 value={item.quantity}
-                                onChange={e => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
+                                onChange={e => updateItem(item._id, 'quantity', parseFloat(e.target.value))}
                               />
                             </td>
                             <td className={cn('px-3 py-2 text-right font-medium', isL1 ? 'text-green-700' : isH1 ? 'text-red-700' : '')}>
                               <input
                                 type="number"
                                 className="w-20 bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-400 rounded px-1 text-right"
-                                value={item.unitRate}
-                                onChange={e => updateItem(item.id, 'unitRate', parseFloat(e.target.value))}
+                                value={item.rate}
+                                onChange={e => updateItem(item._id, 'rate', parseFloat(e.target.value))}
                               />
                               {isL1 && <span className="ml-1 text-[10px] font-bold text-green-600">L1</span>}
                               {isH1 && <span className="ml-1 text-[10px] font-bold text-red-600">H1</span>}
                             </td>
-                            <td className="px-3 py-2 text-center">{item.gstPercent}%</td>
+                            <td className="px-3 py-2 text-center">{item.gst_percent}%</td>
                             <td className="px-3 py-2 text-right font-medium">{formatCurrency(total)}</td>
-                            <td className="px-3 py-2 text-center"><ConfidenceBadge value={item.confidence} /></td>
                           </tr>
                         )
                       })}
@@ -302,7 +364,6 @@ export default function AIReaderPage() {
                       <tr>
                         <td colSpan={5} className="px-3 py-2 text-right">Grand Total (incl. GST):</td>
                         <td className="px-3 py-2 text-right text-indigo-600">{formatCurrency(totalAmount)}</td>
-                        <td />
                       </tr>
                     </tfoot>
                   </table>
@@ -313,28 +374,28 @@ export default function AIReaderPage() {
 
           {step >= 2 && (
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => { setStep(0); setResult(null); setItems([]) }}
-              >
+              <Button variant="outline" className="flex-1" onClick={reset}>
                 Start Over
               </Button>
               <Button
                 className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700"
-                onClick={() => { setStep(3); toast.success('PO created successfully!', { description: `Created from ${result?.fileName}` }) }}
+                onClick={() => {
+                  setStep(3)
+                  toast.success('PO created!', { description: `Generated from ${fileName}` })
+                }}
               >
                 <Send className="w-4 h-4" /> Commit & Create PO
               </Button>
             </div>
           )}
+
           {step === 3 && (
             <Card className="border-green-200 bg-green-50 dark:bg-green-950">
               <CardContent className="p-4 flex items-center gap-3">
                 <CheckCircle className="w-6 h-6 text-green-600" />
                 <div>
                   <p className="font-semibold text-green-800 dark:text-green-200">Purchase Order Created!</p>
-                  <p className="text-xs text-green-600">PO-2024-0090 generated from AI extraction</p>
+                  <p className="text-xs text-green-600">PO generated from AI extraction · {items.length} line items</p>
                 </div>
               </CardContent>
             </Card>
