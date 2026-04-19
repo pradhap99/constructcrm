@@ -1,15 +1,17 @@
 'use client'
 import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { analytics } from '@/lib/api'
 import { formatCurrencyCr, formatCurrency } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import {
   IndianRupee, ShoppingCart, Package, Users, TrendingUp,
-  FileText, Building2, Target, AlertCircle
+  FileText, Building2, Target, AlertCircle, FileSearch, Brain
 } from 'lucide-react'
 import type { DashboardStats } from '@/lib/types'
 
@@ -61,7 +63,21 @@ const statusColors: Record<string, string> = {
   quotes_received: 'info', draft: 'secondary',
 }
 
+const QUICK_ACTIONS = [
+  { label: 'Create Indent', icon: FileText, href: '/indents/new', color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950' },
+  { label: 'New RFQ', icon: FileSearch, href: null, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950' },
+  { label: 'Record GRN', icon: Package, href: null, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950' },
+  { label: 'Upload Document', icon: Brain, href: '/ai-reader', color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950' },
+]
+
+const PROJECT_STATUS_DATA = [
+  { name: 'Riverside Residential', budget: '₹4.5 Cr', progress: 58, status: 'active' },
+  { name: 'NH-48 Highway Package', budget: '₹8.2 Cr', progress: 84, status: 'active' },
+  { name: 'Tech Park Phase 2', budget: '₹6.0 Cr', progress: 38, status: 'planning' },
+]
+
 export default function DashboardPage() {
+  const router = useRouter()
   const { data: statsData } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => analytics.dashboardStats().then(r => r.data),
@@ -88,6 +104,36 @@ export default function DashboardPage() {
             </Card>
           )
         })}
+      </div>
+
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Quick Actions</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {QUICK_ACTIONS.map((action) => {
+            const Icon = action.icon
+            return (
+              <Card
+                key={action.label}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => {
+                  if (action.href) {
+                    router.push(action.href)
+                  } else {
+                    alert('Coming soon')
+                  }
+                }}
+              >
+                <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center min-h-[88px]">
+                  <div className={`p-2.5 rounded-xl ${action.bg}`}>
+                    <Icon className={`w-5 h-5 ${action.color}`} />
+                  </div>
+                  <p className="text-sm font-medium">{action.label}</p>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -129,6 +175,36 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Project Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Project Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {PROJECT_STATUS_DATA.map((proj) => (
+              <div key={proj.name} className="flex items-center gap-4">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate">{proj.name}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-muted-foreground">{proj.budget}</span>
+                      <Badge variant={proj.status === 'active' ? 'success' : 'secondary'} className="text-xs capitalize">
+                        {proj.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Progress value={proj.progress} className="h-2 flex-1" />
+                    <span className="text-xs text-muted-foreground w-8 text-right">{proj.progress}%</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Activity */}
       <Card>
