@@ -411,6 +411,17 @@ export interface AIParserResult {
   rawText?: string
 }
 
+export interface Notification {
+  id: string
+  title: string
+  message: string
+  severity: 'critical' | 'warning' | 'info'
+  is_seen: boolean
+  project_id?: string | null
+  project_name?: string | null
+  created_at: string
+}
+
 export interface PaginatedResponse<T> {
   data: T[]
   total: number
