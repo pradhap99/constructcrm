@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sun, Moon, Bell, Search, User } from 'lucide-react'
+import { Sun, Moon, Bell, Search, User, Menu } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { NotificationsPanel } from './NotificationsPanel'
@@ -51,7 +51,7 @@ const BASE_TITLE_MAP: Record<string, string> = {
 
 const POLL_INTERVAL_MS = 30_000
 
-export function Header() {
+export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -99,14 +99,26 @@ export function Header() {
 
   return (
     <>
-      <header className="flex items-center justify-between h-16 px-6 border-b bg-background">
-        <div>
+      <header className="flex items-center justify-between h-16 px-4 sm:px-6 border-b bg-background">
+        <div className="flex items-center gap-3">
+          {/* Hamburger — mobile only */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={onMenuToggle}
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <div>
           <h1 className="text-lg font-semibold text-foreground">{title}</h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Home {segments.map((s, i) => (
               <span key={i}> › <span className="capitalize">{s.replace(/-/g, ' ')}</span></span>
             ))}
           </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

@@ -20,7 +20,7 @@ function fmt(n: number) { return '₹' + n.toLocaleString('en-IN') }
 
 export default function InvoicesPage() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Receipt className="w-7 h-7 text-indigo-600"/>
