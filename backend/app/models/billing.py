@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import uuid
 import enum
 from sqlalchemy import Column, String, DateTime, Enum, Numeric, Text, JSON, ForeignKey, Boolean, Date, Integer
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
@@ -50,3 +51,5 @@ class Billing(Base):
     documents = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", foreign_keys=[project_id])

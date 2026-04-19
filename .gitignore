@@ -28,6 +28,11 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
 # Editor
 .vscode/
 .idea/
