@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "ConstructCRM"
     DEBUG: bool = True
     OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    UPLOAD_DIR: str = "uploads"
 
     class Config:
         env_file = ".env"

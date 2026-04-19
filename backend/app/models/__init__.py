@@ -16,6 +16,7 @@ from app.models.billing import Billing, BillingStatus, BillingType
 from app.models.notification import Notification, NotificationSeverity
 from app.models.material import Material, MaterialStatus
 from app.models.agent_job import AgentJob, AgentJobType, AgentJobStatus
+from app.models.document import Document, DocumentStatus
 
 __all__ = [
     "User", "UserRole",
@@ -36,4 +37,5 @@ __all__ = [
     "Notification", "NotificationSeverity",
     "Material", "MaterialStatus",
     "AgentJob", "AgentJobType", "AgentJobStatus",
+    "Document", "DocumentStatus",
 ]
