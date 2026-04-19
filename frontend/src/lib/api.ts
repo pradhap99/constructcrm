@@ -3,6 +3,7 @@ import type {
   Project, Lead, Vendor, Indent, RFQ, PurchaseOrder, GRN,
   Invoice, DPR, BOQItem, Submittal, ChangeOrder, Bill,
   DashboardStats, SpendAnalytics, AIParserResult, PaginatedResponse,
+  Notification,
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1'
@@ -167,6 +168,18 @@ export const analytics = {
   budgetVsActual: (params?: Record<string, string>) =>
     apiClient.get<SpendAnalytics['budgetVsActual']>('/analytics/budget-vs-actual', { params }),
   fullReport: () => apiClient.get<SpendAnalytics>('/analytics/spend'),
+}
+
+// Notifications
+export const notifications = {
+  list: (params?: { project_id?: string; is_seen?: boolean }) =>
+    apiClient.get<Notification[]>('/notifications/', { params }),
+  markSeen: (id: string) =>
+    apiClient.patch<Notification>(`/notifications/${id}/seen`),
+  markAllSeen: () =>
+    apiClient.patch('/notifications/seen-all'),
+  create: (data: { title: string; message: string; severity: 'critical' | 'warning' | 'info'; project_id?: string }) =>
+    apiClient.post<Notification>('/notifications/', data),
 }
 
 // AI Parser
