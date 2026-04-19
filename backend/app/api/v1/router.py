@@ -19,6 +19,12 @@ from app.api.v1.endpoints import (
     dashboard,
     ai_parser,
     seed,
+    notifications,
+    materials,
+    agent_jobs,
+    team,
+    clients,
+    bills,
 )
 
 api_router = APIRouter()
@@ -42,3 +48,9 @@ api_router.include_router(billings.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(ai_parser.router)
 api_router.include_router(seed.router)
+api_router.include_router(notifications.router)
+api_router.include_router(materials.router)
+api_router.include_router(agent_jobs.router)
+api_router.include_router(team.router)
+api_router.include_router(clients.router)
+api_router.include_router(bills.router)

@@ -13,6 +13,9 @@ from app.models.boq import BOQ, BOQStatus
 from app.models.submittal import Submittal, SubmittalStatus, SubmittalType
 from app.models.change_order import ChangeOrder, ChangeOrderStatus, ChangeOrderType
 from app.models.billing import Billing, BillingStatus, BillingType
+from app.models.notification import Notification, NotificationSeverity
+from app.models.material import Material, MaterialStatus
+from app.models.agent_job import AgentJob, AgentJobType, AgentJobStatus
 
 __all__ = [
     "User", "UserRole",
@@ -30,4 +33,7 @@ __all__ = [
     "Submittal", "SubmittalStatus", "SubmittalType",
     "ChangeOrder", "ChangeOrderStatus", "ChangeOrderType",
     "Billing", "BillingStatus", "BillingType",
+    "Notification", "NotificationSeverity",
+    "Material", "MaterialStatus",
+    "AgentJob", "AgentJobType", "AgentJobStatus",
 ]
