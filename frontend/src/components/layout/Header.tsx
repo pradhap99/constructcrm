@@ -5,23 +5,45 @@ import { Sun, Moon, Bell, Search, User } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 
-const breadcrumbMap: Record<string, string> = {
+// Exact-path matches take priority; base-route fallback used for everything else.
+const EXACT_TITLE_MAP: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/ai-reader': 'AI Draft Reader',
   '/projects': 'Projects',
   '/leads': 'Leads',
   '/indents': 'Indents / Purchase Requests',
+  '/indents/new': 'Create Indent',
   '/rfq': 'RFQ Management',
-  '/vendors': 'Vendors',
+  '/vendors': 'Vendor Management',
   '/purchase-orders': 'Purchase Orders',
-  '/grn': 'Goods Receipt Notes',
+  '/grn': 'GRN & 3-Way Match',
   '/invoices': 'Invoices',
   '/dpr': 'Daily Progress Reports',
   '/boq': 'Bill of Quantities',
   '/submittals': 'Submittals',
   '/change-orders': 'Change Orders',
-  '/billing': 'Billing',
+  '/billing': 'Client Billing',
   '/analytics': 'Analytics',
+}
+
+// Fallback: resolve by base segment only (handles dynamic routes like /indents/[id])
+const BASE_TITLE_MAP: Record<string, string> = {
+  dashboard: 'Dashboard',
+  'ai-reader': 'AI Draft Reader',
+  projects: 'Projects',
+  leads: 'Leads',
+  indents: 'Indents / Purchase Requests',
+  rfq: 'RFQ Management',
+  vendors: 'Vendor Management',
+  'purchase-orders': 'Purchase Orders',
+  grn: 'GRN & 3-Way Match',
+  invoices: 'Invoices',
+  dpr: 'Daily Progress Reports',
+  boq: 'Bill of Quantities',
+  submittals: 'Submittals',
+  'change-orders': 'Change Orders',
+  billing: 'Client Billing',
+  analytics: 'Analytics',
 }
 
 export function Header() {
@@ -29,8 +51,11 @@ export function Header() {
   const { theme, setTheme } = useTheme()
 
   const segments = pathname.split('/').filter(Boolean)
-  const baseRoute = '/' + segments[0]
-  const title = breadcrumbMap[baseRoute] ?? 'ConstructCRM'
+  // Try exact path first, then base-segment fallback, then generic fallback
+  const title =
+    EXACT_TITLE_MAP[pathname] ??
+    BASE_TITLE_MAP[segments[0]] ??
+    'ConstructCRM'
 
   return (
     <header className="flex items-center justify-between h-16 px-6 border-b bg-background">
