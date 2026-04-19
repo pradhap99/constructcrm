@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Banknote, TrendingUp, Clock, AlertCircle, Eye, FileText, CalendarClock, ChevronDown, ChevronUp } from 'lucide-react'
+import { Banknote, TrendingUp, Clock, AlertCircle, FileText, CalendarClock, ChevronDown, ChevronUp, Bot, Loader2, CheckCircle2 } from 'lucide-react'
 import { cn, formatDate, formatCurrencyCr, formatCurrency } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -235,10 +235,18 @@ function DeductionPanel({ gross, retentionPct, deductions, onChange }: Deduction
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type AgentState = 'idle' | 'running' | 'done'
+
 export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState('All')
   const [bills, setBills] = useState<BillEntry[]>(INITIAL_BILLS)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [chaseStates, setChaseStates] = useState<Record<string, AgentState>>({})
+
+  function runChase(id: string) {
+    setChaseStates(prev => ({ ...prev, [id]: 'running' }))
+    setTimeout(() => setChaseStates(prev => ({ ...prev, [id]: 'done' })), 3000)
+  }
 
   const filtered = bills.filter(b =>
     statusFilter === 'All' || b.status === statusKeyMap[statusFilter]
@@ -383,19 +391,48 @@ export default function BillingPage() {
                       <span className={cn('px-2 py-1 rounded-full text-xs font-medium', sc?.color)}>{sc?.label}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <button
-                        onClick={() => setExpandedId(isOpen ? null : b.id)}
-                        className={cn(
-                          'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
-                          isOpen
-                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-500'
-                        )}
-                        title="View / edit deductions"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedId(isOpen ? null : b.id)}
+                          className={cn(
+                            'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+                            isOpen
+                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-500'
+                          )}
+                          title="View / edit deductions"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                        {b.status !== 'paid' && (() => {
+                          const cs = chaseStates[b.id] ?? 'idle'
+                          return (
+                            <button
+                              onClick={() => runChase(b.id)}
+                              disabled={cs === 'running'}
+                              title="Run AI payment chase agent"
+                              className={cn(
+                                'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+                                cs === 'done'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                  : cs === 'running'
+                                  ? 'bg-indigo-50 text-indigo-400 cursor-not-allowed'
+                                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400'
+                              )}
+                            >
+                              {cs === 'running' ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : cs === 'done' ? (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              ) : (
+                                <Bot className="w-3.5 h-3.5" />
+                              )}
+                              {cs === 'running' ? 'Chasing…' : cs === 'done' ? 'Chased' : 'Chase'}
+                            </button>
+                          )
+                        })()}
+                      </div>
                     </td>
                   </tr>
                   {isOpen && (

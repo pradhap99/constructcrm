@@ -3,8 +3,9 @@
 import { useState, useMemo } from 'react'
 import {
   AlertTriangle, CheckCircle2, Clock, Search, Filter,
-  Package, TrendingDown, IndianRupee, Layers,
+  Package, TrendingDown, IndianRupee, Layers, Bot, Loader2,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type MaterialStatus = 'mismatch' | 'match' | 'pending'
 
@@ -104,10 +105,18 @@ function valueAtRisk(m: Material): number {
   return m.status === 'mismatch' ? mismatchQty * m.rate : 0
 }
 
+type AgentState = 'idle' | 'running' | 'done'
+
 export default function MaterialsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<MaterialStatus | 'all'>('all')
   const [projectFilter, setProjectFilter] = useState('all')
+  const [agentState, setAgentState] = useState<AgentState>('idle')
+
+  function runReconciliation() {
+    setAgentState('running')
+    setTimeout(() => setAgentState('done'), 3000)
+  }
 
   const projects = useMemo(() => Array.from(new Set(MATERIALS.map((m) => m.project))), [])
 
@@ -140,11 +149,34 @@ export default function MaterialsPage() {
   return (
     <div className="p-6 sm:p-8 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Materials Tracker</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Track ordered, received, and installed quantities across all projects
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Materials Tracker</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Track ordered, received, and installed quantities across all projects
+          </p>
+        </div>
+        <button
+          onClick={runReconciliation}
+          disabled={agentState === 'running'}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0',
+            agentState === 'done'
+              ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+              : agentState === 'running'
+              ? 'bg-indigo-50 text-indigo-400 border border-indigo-200 cursor-not-allowed'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          )}
+        >
+          {agentState === 'running' ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : agentState === 'done' ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <Bot className="w-4 h-4" />
+          )}
+          {agentState === 'running' ? 'Running AI Reconciliation…' : agentState === 'done' ? 'Reconciliation Complete' : 'Run AI Reconciliation'}
+        </button>
       </div>
 
       {/* KPI Cards */}
