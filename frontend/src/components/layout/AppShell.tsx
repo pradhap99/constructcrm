@@ -9,23 +9,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile overlay backdrop */}
-      {mobileSidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
-          onClick={() => setMobileSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar — always visible on md+, slide-in overlay on mobile */}
-      <div
-        className={[
-          'fixed inset-y-0 left-0 z-30 flex-shrink-0 transition-transform duration-300 md:relative md:translate-x-0',
-          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
-        ].join(' ')}
-      >
+      {/* Desktop sidebar — always in flex flow, hidden below md */}
+      <div className="hidden md:flex flex-shrink-0">
         <Sidebar onClose={() => setMobileSidebarOpen(false)} />
       </div>
+
+      {/* Mobile sidebar — fixed overlay, only when open */}
+      {mobileSidebarOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-20 bg-black/50"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <div className="fixed inset-y-0 left-0 z-30">
+            <Sidebar onClose={() => setMobileSidebarOpen(false)} />
+          </div>
+        </>
+      )}
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header onMenuToggle={() => setMobileSidebarOpen((o) => !o)} />
