@@ -101,7 +101,7 @@ export default function BillingPage() {
     queryFn: () => billingApi.list(),
   })
 
-  const items: any[] = data?.data ?? []
+  const items: any[] = (data?.data as any) ?? []
 
   const filtered = statusFilter === 'All'
     ? items

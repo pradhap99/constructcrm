@@ -62,7 +62,7 @@ export default function ChangeOrdersPage() {
     queryFn: () => changeOrdersApi.list(),
   })
 
-  const items: any[] = data?.data ?? []
+  const items: any[] = (data?.data as any) ?? []
 
   const filtered = statusFilter === 'All'
     ? items

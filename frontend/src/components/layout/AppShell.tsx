@@ -1,11 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [checked, setChecked] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      router.replace('/login')
+    } else {
+      setChecked(true)
+    }
+  }, [router])
+
+  if (!checked) return null // prevent flash of unauthenticated content
 
   return (
     <div className="flex h-screen overflow-hidden">
