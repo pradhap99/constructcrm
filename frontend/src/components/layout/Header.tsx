@@ -57,6 +57,14 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const [panelOpen, setPanelOpen] = useState(false)
   const [notifs, setNotifs] = useState<Notification[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [user, setUser] = useState<{ full_name: string; email: string; role: string } | null>(null)
+
+  useEffect(() => {
+    const stored = localStorage.getItem('auth_user')
+    if (stored) {
+      try { setUser(JSON.parse(stored)) } catch { /* ignore */ }
+    }
+  }, [])
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -169,8 +177,8 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
               <User className="w-4 h-4 text-white" />
             </div>
             <div className="hidden md:block text-sm">
-              <p className="font-medium leading-none">Admin User</p>
-              <p className="text-xs text-muted-foreground">admin@constructcrm.in</p>
+              <p className="font-medium leading-none">{user?.full_name ?? 'User'}</p>
+              <p className="text-xs text-muted-foreground">{user?.email ?? ''}</p>
             </div>
           </div>
         </div>

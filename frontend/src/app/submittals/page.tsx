@@ -60,7 +60,7 @@ export default function SubmittalsPage() {
     queryFn: () => submittalsApi.list(),
   })
 
-  const items: any[] = data?.data ?? []
+  const items: any[] = (data?.data as any) ?? []
 
   const filtered = statusFilter === 'All'
     ? items

@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Brain, Building2, Target, ClipboardList,
   FileSearch, Users, ShoppingCart, Package, Receipt,
   CalendarDays, BarChart3, FileCheck, GitBranch, Wallet, TrendingUp,
-  HardHat, ChevronLeft, ChevronRight, Layers,
+  HardHat, ChevronLeft, ChevronRight, Layers, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
@@ -39,7 +39,14 @@ const navItems = [
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+    router.push('/login')
+  }
 
   return (
     <aside
@@ -101,10 +108,23 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
 
-      {/* Footer */}
-      <div className="border-t border-slate-700 px-4 py-3">
+      {/* Logout */}
+      <div className="border-t border-slate-700 px-2 py-3 space-y-1">
+        <button
+          onClick={handleLogout}
+          className={cn(
+            'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-all',
+            'text-slate-400 hover:bg-red-900/40 hover:text-red-400'
+          )}
+          title={collapsed ? 'Logout' : undefined}
+        >
+          <LogOut className="w-5 h-5 shrink-0" />
+          {!collapsed && <span className="flex-1 text-left truncate">Logout</span>}
+        </button>
+
+        {/* Footer version */}
         {!collapsed && (
-          <p className="text-xs text-slate-500 text-center">v0.1.0 · Production</p>
+          <p className="text-xs text-slate-500 text-center pt-1">v0.1.0 · Production</p>
         )}
       </div>
     </aside>
