@@ -1,35 +1,73 @@
-"use client"
-import { useState } from "react"
-import { Plus, List, LayoutGrid, Calendar, Users, Package } from "lucide-react"
-import { cn } from "@/lib/utils"
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Plus, Users, Calendar } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { rfq as rfqApi } from '@/lib/api'
 
-const STAGES = ["Draft","Sent to Vendors","Quotes Received","Compared","PO Raised"] as const
-type Stage = typeof STAGES[number]
-
-interface RFQCard {
-  id: string; rfqNumber: string; project: string; vendorCount: number
-  deadline: string; itemCount: number; stage: Stage
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  sent: 'bg-blue-100 text-blue-700',
+  quotes_received: 'bg-amber-100 text-amber-700',
+  compared: 'bg-purple-100 text-purple-700',
+  po_raised: 'bg-green-100 text-green-700',
 }
 
-const DEMO: RFQCard[] = [
-  { id:"1", rfqNumber:"RFQ-2024-001", project:"Phoenix Commercial Tower", vendorCount:4, deadline:"2024-02-15", itemCount:12, stage:"Draft" },
-  { id:"2", rfqNumber:"RFQ-2024-002", project:"Green Valley Residential", vendorCount:3, deadline:"2024-02-10", itemCount:8, stage:"Sent to Vendors" },
-  { id:"3", rfqNumber:"RFQ-2024-003", project:"Marina Bay Infrastructure", vendorCount:5, deadline:"2024-02-05", itemCount:20, stage:"Quotes Received" },
-  { id:"4", rfqNumber:"RFQ-2024-004", project:"Phoenix Commercial Tower", vendorCount:3, deadline:"2024-01-28", itemCount:6, stage:"Compared" },
-  { id:"5", rfqNumber:"RFQ-2024-005", project:"Green Valley Residential", vendorCount:4, deadline:"2024-01-20", itemCount:15, stage:"PO Raised" },
-  { id:"6", rfqNumber:"RFQ-2024-006", project:"Marina Bay Infrastructure", vendorCount:2, deadline:"2024-02-20", itemCount:9, stage:"Sent to Vendors" },
-]
+interface NewRFQForm {
+  rfq_number: string
+  title: string
+  project_id: string
+  created_by: string
+  deadline: string
+  description: string
+}
 
-const STAGE_COLORS: Record<Stage, string> = {
-  "Draft": "bg-gray-100 border-gray-300",
-  "Sent to Vendors": "bg-blue-50 border-blue-300",
-  "Quotes Received": "bg-amber-50 border-amber-300",
-  "Compared": "bg-purple-50 border-purple-300",
-  "PO Raised": "bg-green-50 border-green-300",
+const EMPTY_FORM: NewRFQForm = {
+  rfq_number: '',
+  title: '',
+  project_id: '',
+  created_by: '',
+  deadline: '',
+  description: '',
 }
 
 export default function RFQPage() {
-  const [view, setView] = useState<"kanban"|"list">("kanban")
+  const queryClient = useQueryClient()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [form, setForm] = useState<NewRFQForm>(EMPTY_FORM)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['rfq'],
+    queryFn: () => rfqApi.list(),
+  })
+
+  const items = data?.data ?? []
+
+  const createMutation = useMutation({
+    mutationFn: (payload: Partial<NewRFQForm>) => rfqApi.create(payload),
+    onSuccess: () => {
+      toast.success('RFQ created successfully')
+      queryClient.invalidateQueries({ queryKey: ['rfq'] })
+      setDialogOpen(false)
+      setForm(EMPTY_FORM)
+    },
+    onError: () => toast.error('Failed to create RFQ'),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.rfq_number || !form.title || !form.project_id || !form.created_by) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+    createMutation.mutate(form)
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -37,66 +75,153 @@ export default function RFQPage() {
           <h1 className="text-2xl font-bold text-gray-900">RFQ Management</h1>
           <p className="text-gray-500 text-sm mt-1">Request for Quotation pipeline</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex border rounded-lg overflow-hidden">
-            <button onClick={()=>setView("kanban")} className={cn("px-3 py-2",view==="kanban"?"bg-blue-600 text-white":"bg-white text-gray-600")}><LayoutGrid className="w-4 h-4"/></button>
-            <button onClick={()=>setView("list")} className={cn("px-3 py-2",view==="list"?"bg-blue-600 text-white":"bg-white text-gray-600")}><List className="w-4 h-4"/></button>
-          </div>
-          <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            <Plus className="w-4 h-4"/> Create RFQ
-          </button>
-        </div>
+        <Button className="gap-2" onClick={() => setDialogOpen(true)}>
+          <Plus className="w-4 h-4" /> Create RFQ
+        </Button>
       </div>
 
-      {view === "kanban" ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {STAGES.map(stage => {
-            const cards = DEMO.filter(r=>r.stage===stage)
-            return (
-              <div key={stage} className="flex-shrink-0 w-72">
-                <div className={cn("rounded-t-lg border-2 border-b-0 px-4 py-2 font-semibold text-sm",STAGE_COLORS[stage])}>
-                  {stage} <span className="ml-2 bg-white rounded-full px-2 text-xs">{cards.length}</span>
-                </div>
-                <div className={cn("border-2 border-t-0 rounded-b-lg min-h-[400px] p-2 space-y-2",STAGE_COLORS[stage])}>
-                  {cards.map(c=>(
-                    <div key={c.id} className="bg-white rounded-lg border shadow-sm p-4 space-y-2 cursor-pointer hover:shadow-md transition-shadow">
-                      <div className="font-semibold text-sm text-blue-600">{c.rfqNumber}</div>
-                      <div className="text-gray-800 text-sm font-medium">{c.project}</div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span className="flex items-center gap-1"><Users className="w-3 h-3"/>{c.vendorCount} vendors</span>
-                        <span className="flex items-center gap-1"><Package className="w-3 h-3"/>{c.itemCount} items</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-red-500">
-                        <Calendar className="w-3 h-3"/> Due: {c.deadline}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+      {isLoading ? (
+        <div className="p-8 text-center text-gray-500">Loading RFQs...</div>
+      ) : items.length === 0 ? (
+        <div className="p-8 text-center text-gray-500">
+          No RFQs yet. Create your first RFQ.
         </div>
       ) : (
-        <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>{["RFQ #","Project","Stage","Vendors","Items","Deadline"].map(h=><th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y">
-              {DEMO.map(r=>(
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-blue-600 font-medium">{r.rfqNumber}</td>
-                  <td className="px-4 py-3 text-gray-800">{r.project}</td>
-                  <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">{r.stage}</span></td>
-                  <td className="px-4 py-3">{r.vendorCount}</td>
-                  <td className="px-4 py-3">{r.itemCount}</td>
-                  <td className="px-4 py-3 text-red-500">{r.deadline}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item: any) => (
+            <div
+              key={item.id}
+              className="bg-white rounded-lg border shadow-sm p-4 space-y-3 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-semibold text-blue-600 font-mono text-sm">
+                  {item.rfq_number}
+                </span>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                    STATUS_COLORS[item.status] ?? 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {item.status.replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              <div>
+                <p className="font-medium text-gray-900 text-sm">{item.title}</p>
+                <p className="text-gray-500 text-xs mt-0.5">Project: {item.project_id}</p>
+              </div>
+
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                {Array.isArray(item.vendor_ids) && (
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    {item.vendor_ids.length} vendor{item.vendor_ids.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+                {item.deadline && (
+                  <span className="flex items-center gap-1 text-red-500">
+                    <Calendar className="w-3 h-3" />
+                    Due: {item.deadline}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create New RFQ</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="rfq_number">
+                  RFQ Number <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="rfq_number"
+                  placeholder="RFQ-001"
+                  value={form.rfq_number}
+                  onChange={(e) => setForm({ ...form, rfq_number: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="title">
+                  Title <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="title"
+                  placeholder="RFQ title"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="project_id">
+                  Project ID <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="project_id"
+                  placeholder="Project ID"
+                  value={form.project_id}
+                  onChange={(e) => setForm({ ...form, project_id: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="created_by">
+                  Created By <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="created_by"
+                  placeholder="Your name"
+                  value={form.created_by}
+                  onChange={(e) => setForm({ ...form, created_by: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="deadline">Deadline</Label>
+              <Input
+                id="deadline"
+                type="date"
+                value={form.deadline}
+                onChange={(e) => setForm({ ...form, deadline: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the RFQ requirements..."
+                rows={3}
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Creating...' : 'Create RFQ'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
