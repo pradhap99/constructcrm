@@ -1,102 +1,388 @@
 'use client'
 import { useState } from 'react'
-import { ShoppingCart, Plus, Eye, FileText } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Plus, Check } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '@/components/ui/table'
+import { purchaseOrders as purchaseOrdersApi } from '@/lib/api'
 
-const mockPOs = [
-  { id: '1', po_number: 'PO-2024-001', vendor: 'Shree Lakshmi Steel', project: 'Phoenix Tower', amount: 2850000, gst: 513000, total: 3363000, status: 'acknowledged', date: '2024-01-15', delivery_date: '2024-02-15' },
-  { id: '2', po_number: 'PO-2024-002', vendor: 'Raj Cement & Materials', project: 'Green Valley', amount: 1200000, gst: 216000, total: 1416000, status: 'partially_delivered', date: '2024-01-20', delivery_date: '2024-02-20' },
-  { id: '3', po_number: 'PO-2024-003', vendor: 'Pioneer Electrical', project: 'Marina Bay', amount: 750000, gst: 135000, total: 885000, status: 'sent', date: '2024-01-25', delivery_date: '2024-03-01' },
-  { id: '4', po_number: 'PO-2024-004', vendor: 'Modern Hardware', project: 'Phoenix Tower', amount: 450000, gst: 81000, total: 531000, status: 'completed', date: '2023-12-10', delivery_date: '2024-01-10' },
-  { id: '5', po_number: 'PO-2024-005', vendor: 'Excel Paints', project: 'Green Valley', amount: 320000, gst: 57600, total: 377600, status: 'draft', date: '2024-02-01', delivery_date: '2024-03-15' },
-]
-
-const statusConfig: Record<string, { label: string; color: string }> = {
-  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
-  sent: { label: 'Sent', color: 'bg-blue-100 text-blue-700' },
-  acknowledged: { label: 'Acknowledged', color: 'bg-indigo-100 text-indigo-700' },
-  partially_delivered: { label: 'Partly Delivered', color: 'bg-amber-100 text-amber-700' },
-  completed: { label: 'Completed', color: 'bg-green-100 text-green-700' },
-  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700' },
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  sent: 'bg-blue-100 text-blue-700',
+  approved: 'bg-green-100 text-green-700',
+  partially_received: 'bg-amber-100 text-amber-700',
+  completed: 'bg-green-100 text-green-700',
+  cancelled: 'bg-red-100 text-red-700',
 }
 
-function fmt(n: number) { return '₹' + n.toLocaleString('en-IN') }
+const STATUS_TABS = [
+  { value: 'all', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'sent', label: 'Sent' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'partially_received', label: 'Partial' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
+
+interface NewPOForm {
+  po_number: string
+  title: string
+  project_id: string
+  vendor_id: string
+  created_by: string
+  total_amount: string
+  gst_amount: string
+  subtotal: string
+  delivery_date: string
+  payment_terms: string
+  delivery_address: string
+}
+
+const EMPTY_FORM: NewPOForm = {
+  po_number: '',
+  title: '',
+  project_id: '',
+  vendor_id: '',
+  created_by: '',
+  total_amount: '',
+  gst_amount: '0',
+  subtotal: '0',
+  delivery_date: '',
+  payment_terms: '',
+  delivery_address: '',
+}
+
+function formatINR(amount: number | string | undefined | null): string {
+  const n = Number(amount ?? 0)
+  return '₹' + n.toLocaleString('en-IN')
+}
 
 export default function PurchaseOrdersPage() {
-  const [filter, setFilter] = useState('all')
-  const filtered = filter === 'all' ? mockPOs : mockPOs.filter(p => p.status === filter)
+  const queryClient = useQueryClient()
+  const [tab, setTab] = useState('all')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [form, setForm] = useState<NewPOForm>(EMPTY_FORM)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['purchase-orders'],
+    queryFn: () => purchaseOrdersApi.list(),
+  })
+
+  const items = data?.data ?? []
+
+  const filtered = tab === 'all' ? items : items.filter((po: any) => po.status === tab)
+
+  const createMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => purchaseOrdersApi.create(payload),
+    onSuccess: () => {
+      toast.success('Purchase order created successfully')
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
+      setDialogOpen(false)
+      setForm(EMPTY_FORM)
+    },
+    onError: () => toast.error('Failed to create purchase order'),
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => purchaseOrdersApi.approve(id),
+    onSuccess: () => {
+      toast.success('Purchase order approved')
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
+    },
+    onError: () => toast.error('Failed to approve purchase order'),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.po_number || !form.title || !form.project_id || !form.vendor_id || !form.created_by || !form.total_amount) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+    createMutation.mutate({
+      ...form,
+      total_amount: Number(form.total_amount),
+      gst_amount: Number(form.gst_amount),
+      subtotal: Number(form.subtotal),
+    })
+  }
+
+  const stats = {
+    total: items.length,
+    active: items.filter((po: any) => ['sent', 'approved', 'partially_received'].includes(po.status)).length,
+    completed: items.filter((po: any) => po.status === 'completed').length,
+    totalValue: items.reduce((sum: number, po: any) => sum + Number(po.total_amount ?? 0), 0),
+  }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ShoppingCart className="w-7 h-7 text-indigo-600" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Purchase Orders</h1>
-            <p className="text-sm text-gray-500">{mockPOs.length} total POs</p>
-          </div>
+        <div>
+          <h2 className="text-2xl font-bold">Purchase Orders</h2>
+          <p className="text-muted-foreground text-sm">Manage vendor purchase orders across projects</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+        <Button className="gap-2" onClick={() => setDialogOpen(true)}>
           <Plus className="w-4 h-4" /> New PO
-        </button>
+        </Button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Total Value', value: fmt(mockPOs.reduce((s, p) => s + p.total, 0)), color: 'text-indigo-600' },
-          { label: 'Active POs', value: mockPOs.filter(p => ['sent','acknowledged','partially_delivered'].includes(p.status)).length, color: 'text-blue-600' },
-          { label: 'Completed', value: mockPOs.filter(p => p.status === 'completed').length, color: 'text-green-600' },
-          { label: 'Pending GST', value: fmt(mockPOs.reduce((s, p) => s + p.gst, 0)), color: 'text-amber-600' },
-        ].map(card => (
-          <div key={card.label} className="bg-white dark:bg-gray-800 rounded-lg border p-4 shadow-sm">
-            <p className="text-sm text-gray-500">{card.label}</p>
-            <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
-          </div>
+          { label: 'Total POs', value: stats.total, display: String(stats.total), color: 'text-blue-600' },
+          { label: 'Active', value: stats.active, display: String(stats.active), color: 'text-indigo-600' },
+          { label: 'Completed', value: stats.completed, display: String(stats.completed), color: 'text-green-600' },
+          { label: 'Total Value', value: stats.totalValue, display: formatINR(stats.totalValue), color: 'text-amber-600' },
+        ].map((s) => (
+          <Card key={s.label}>
+            <CardContent className="p-4 text-center">
+              <p className={`text-2xl font-bold ${s.color}`}>{s.display}</p>
+              <p className="text-sm text-muted-foreground">{s.label}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      <div className="flex gap-2">
-        {['all', 'draft', 'sent', 'acknowledged', 'partially_delivered', 'completed'].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${filter === s ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {s === 'all' ? 'All' : statusConfig[s]?.label || s}
+      <div className="flex gap-2 flex-wrap">
+        {STATUS_TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTab(t.value)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              tab === t.value
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {t.label}
           </button>
         ))}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-700">
-            <tr>
-              {['PO Number','Vendor','Project','Amount','GST','Total','Status','Date','Delivery','Actions'].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+      <Card>
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">Loading purchase orders...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            No purchase orders yet.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>PO Number</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Vendor ID</TableHead>
+                <TableHead>Project ID</TableHead>
+                <TableHead>Total Amount</TableHead>
+                <TableHead>Delivery Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((po: any) => (
+                <TableRow key={po.id}>
+                  <TableCell className="font-mono font-semibold text-indigo-600">
+                    {po.po_number}
+                  </TableCell>
+                  <TableCell className="font-medium max-w-[160px] truncate">{po.title}</TableCell>
+                  <TableCell>{po.vendor_id}</TableCell>
+                  <TableCell>{po.project_id}</TableCell>
+                  <TableCell className="font-semibold">{formatINR(po.total_amount)}</TableCell>
+                  <TableCell>{po.delivery_date ?? '—'}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        STATUS_COLORS[po.status] ?? 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {po.status.replace(/_/g, ' ')}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {(po.status === 'draft' || po.status === 'sent') && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-green-600 hover:text-green-700 h-7 gap-1 px-2 text-xs"
+                        onClick={() => approveMutation.mutate(po.id)}
+                        disabled={approveMutation.isPending}
+                      >
+                        <Check className="w-3 h-3" /> Approve
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {filtered.map(po => (
-              <tr key={po.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td className="px-4 py-3 font-mono font-semibold text-indigo-600">{po.po_number}</td>
-                <td className="px-4 py-3 font-medium">{po.vendor}</td>
-                <td className="px-4 py-3 text-gray-600">{po.project}</td>
-                <td className="px-4 py-3">{fmt(po.amount)}</td>
-                <td className="px-4 py-3 text-amber-600">{fmt(po.gst)}</td>
-                <td className="px-4 py-3 font-semibold">{fmt(po.total)}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusConfig[po.status]?.color}`}>
-                    {statusConfig[po.status]?.label}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-500">{po.date}</td>
-                <td className="px-4 py-3 text-gray-500">{po.delivery_date}</td>
-                <td className="px-4 py-3 flex gap-2">
-                  <button className="p-1 text-gray-400 hover:text-indigo-600"><Eye className="w-4 h-4" /></button>
-                  <button className="p-1 text-gray-400 hover:text-green-600"><FileText className="w-4 h-4" /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Purchase Order</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="po_number">
+                  PO Number <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="po_number"
+                  placeholder="PO-001"
+                  value={form.po_number}
+                  onChange={(e) => setForm({ ...form, po_number: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="title">
+                  Title <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="title"
+                  placeholder="PO title"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="project_id">
+                  Project ID <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="project_id"
+                  placeholder="Project ID"
+                  value={form.project_id}
+                  onChange={(e) => setForm({ ...form, project_id: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="vendor_id">
+                  Vendor ID <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="vendor_id"
+                  placeholder="Vendor ID"
+                  value={form.vendor_id}
+                  onChange={(e) => setForm({ ...form, vendor_id: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="created_by">
+                Created By <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="created_by"
+                placeholder="Your name"
+                value={form.created_by}
+                onChange={(e) => setForm({ ...form, created_by: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="total_amount">
+                  Total Amount <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="total_amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.total_amount}
+                  onChange={(e) => setForm({ ...form, total_amount: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="gst_amount">GST Amount</Label>
+                <Input
+                  id="gst_amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.gst_amount}
+                  onChange={(e) => setForm({ ...form, gst_amount: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="subtotal">Subtotal</Label>
+                <Input
+                  id="subtotal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.subtotal}
+                  onChange={(e) => setForm({ ...form, subtotal: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="delivery_date">Delivery Date</Label>
+                <Input
+                  id="delivery_date"
+                  type="date"
+                  value={form.delivery_date}
+                  onChange={(e) => setForm({ ...form, delivery_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="payment_terms">Payment Terms</Label>
+                <Input
+                  id="payment_terms"
+                  placeholder="e.g. 30 days net"
+                  value={form.payment_terms}
+                  onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="delivery_address">Delivery Address</Label>
+              <Textarea
+                id="delivery_address"
+                placeholder="Delivery address"
+                rows={2}
+                value={form.delivery_address}
+                onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Creating...' : 'Create PO'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

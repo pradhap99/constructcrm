@@ -1,59 +1,99 @@
 'use client'
 import { useState } from 'react'
-import { FileText, CheckCircle, Clock, XCircle, Eye } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { FileText, CheckCircle, Clock, XCircle, Plus, Loader2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { submittals as submittalsApi } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
-const submittals = [
-  { id: 'SUB-2024-001', type: 'shop_drawing', description: 'Structural Steel Beam Details - Grid A', project: 'Pune Metro Phase 3', submitted: '2024-01-02', reviewedBy: 'PMRDA Engineer', reviewDue: '2024-01-16', status: 'approved', revision: 'R0', submittedBy: 'Ramesh Iyer' },
-  { id: 'SUB-2024-002', type: 'material_approval', description: 'TMT Fe500 Steel - Tata Steel Make', project: 'Pune Metro Phase 3', submitted: '2024-01-05', reviewedBy: 'PMRDA Engineer', reviewDue: '2024-01-19', status: 'approved', revision: 'R0', submittedBy: 'Ramesh Iyer' },
-  { id: 'SUB-2024-003', type: 'shop_drawing', description: 'Precast Box Girder Reinforcement Details', project: 'Pune Metro Phase 3', submitted: '2024-01-08', reviewedBy: 'PMRDA Engineer', reviewDue: '2024-01-22', status: 'under_review', revision: 'R1', submittedBy: 'Ramesh Iyer' },
-  { id: 'SUB-2024-004', type: 'method_statement', description: 'Concrete Pouring Procedure for Piers', project: 'Nashik Highway Bypass', submitted: '2024-01-10', reviewedBy: 'NHAI Site Engineer', reviewDue: '2024-01-24', status: 'under_review', revision: 'R0', submittedBy: 'Sunita Patil' },
-  { id: 'SUB-2024-005', type: 'material_approval', description: 'OPC 53 Grade Cement - ACC Make', project: 'Nashik Highway Bypass', submitted: '2024-01-03', reviewedBy: 'NHAI Site Engineer', reviewDue: '2024-01-17', status: 'rejected', revision: 'R0', comment: 'Provide test certificates', submittedBy: 'Sunita Patil' },
-  { id: 'SUB-2024-006', type: 'shop_drawing', description: 'Culvert Wing Wall Details km 14', project: 'Nashik Highway Bypass', submitted: '2024-01-12', reviewedBy: 'NHAI Site Engineer', reviewDue: '2024-01-26', status: 'draft', revision: 'R0', submittedBy: 'Sunita Patil' },
-  { id: 'SUB-2024-007', type: 'itp', description: 'Inspection & Test Plan for Concrete Works', project: 'Aurangabad Industrial Park', submitted: '2024-01-14', reviewedBy: 'MIDC Engineer', reviewDue: '2024-01-28', status: 'submitted', revision: 'R0', submittedBy: 'Kiran Shah' },
-]
+// ── Config ──────────────────────────────────────────────────────────────────
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-  approved:     { label: 'Approved',     color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
-  under_review: { label: 'Under Review', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
-  rejected:     { label: 'Rejected',     color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
-  submitted:    { label: 'Submitted',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  draft:        { label: 'Draft',        color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' },
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  draft:           { label: 'Draft',           color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+  submitted:       { label: 'Submitted',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+  under_review:    { label: 'Under Review',    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
+  approved:        { label: 'Approved',        color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
+  rejected:        { label: 'Rejected',        color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
+  revise_resubmit: { label: 'Revise & Resubmit', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
 }
 
-const typeConfig: Record<string, { label: string; color: string }> = {
-  shop_drawing:      { label: 'Shop Drawing',      color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  material_approval: { label: 'Material Approval', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' },
-  method_statement:  { label: 'Method Statement',  color: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300' },
-  itp:               { label: 'ITP',               color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' },
+const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  shop_drawing:        { label: 'Shop Drawing',        color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+  material_approval:   { label: 'Material Approval',   color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' },
+  method_statement:    { label: 'Method Statement',    color: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300' },
+  test_report:         { label: 'Test Report',         color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' },
+  inspection_test_plan:{ label: 'Inspection Test Plan',color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300' },
+  material_sample:     { label: 'Material Sample',     color: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300' },
+  rfmr:                { label: 'RFMR',                color: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300' },
+  warranty:            { label: 'Warranty',            color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
 }
 
-const STATUS_FILTERS = ['All', 'Draft', 'Submitted', 'Under Review', 'Approved', 'Rejected'] as const
-const TYPE_FILTERS   = ['All Types', 'Shop Drawing', 'Material Approval', 'Method Statement', 'ITP'] as const
+const STATUS_FILTERS = ['All', 'draft', 'submitted', 'under_review', 'approved', 'rejected', 'revise_resubmit'] as const
 
-const statusKeyMap: Record<string, string> = {
-  'Draft': 'draft', 'Submitted': 'submitted', 'Under Review': 'under_review', 'Approved': 'approved', 'Rejected': 'rejected',
-}
-const typeLabelMap: Record<string, string> = {
-  'Shop Drawing': 'shop_drawing', 'Material Approval': 'material_approval', 'Method Statement': 'method_statement', 'ITP': 'itp',
+const EMPTY_FORM = {
+  submittal_number: '',
+  title: '',
+  project_id: '',
+  submitted_by: '',
+  submittal_type: 'shop_drawing',
+  revision: 'A',
+  spec_section: '',
+  description: '',
 }
 
-const TODAY = '2024-01-15'
+// ── Page ────────────────────────────────────────────────────────────────────
 
 export default function SubmittalsPage() {
+  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<string>('All')
-  const [typeFilter, setTypeFilter]     = useState<string>('All Types')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [form, setForm] = useState(EMPTY_FORM)
 
-  const filtered = submittals.filter(s => {
-    const matchStatus = statusFilter === 'All' || s.status === statusKeyMap[statusFilter]
-    const matchType   = typeFilter === 'All Types' || s.type === typeLabelMap[typeFilter]
-    return matchStatus && matchType
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['submittals'],
+    queryFn: () => submittalsApi.list(),
   })
 
-  const total      = submittals.length
-  const approved   = submittals.filter(s => s.status === 'approved').length
-  const underReview = submittals.filter(s => s.status === 'under_review').length
-  const rejected   = submittals.filter(s => s.status === 'rejected').length
+  const items: any[] = data?.data ?? []
+
+  const filtered = statusFilter === 'All'
+    ? items
+    : items.filter((s: any) => s.status === statusFilter)
+
+  const totalCount     = items.length
+  const approvedCount  = items.filter((s: any) => s.status === 'approved').length
+  const reviewCount    = items.filter((s: any) => s.status === 'under_review').length
+  const rejectedCount  = items.filter((s: any) => s.status === 'rejected').length
+
+  const createMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => submittalsApi.create(payload as any),
+    onSuccess: () => {
+      toast.success('Submittal created')
+      queryClient.invalidateQueries({ queryKey: ['submittals'] })
+      setDialogOpen(false)
+      setForm(EMPTY_FORM)
+    },
+    onError: () => toast.error('Failed to create submittal'),
+  })
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.submittal_number || !form.title || !form.project_id || !form.submitted_by) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+    createMutation.mutate({ ...form })
+  }
+
+  function set(field: string, value: string) {
+    setForm(prev => ({ ...prev, [field]: value }))
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -66,18 +106,18 @@ export default function SubmittalsPage() {
             <p className="text-sm text-gray-500">Track shop drawings, material approvals, and technical documents</p>
           </div>
         </div>
-        <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
-          + New Submittal
-        </button>
+        <Button onClick={() => setDialogOpen(true)} className="gap-2">
+          <Plus className="w-4 h-4" /> New Submittal
+        </Button>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Total Submittals', value: total,      icon: <FileText className="w-5 h-5 text-indigo-500" />,  color: 'text-indigo-600' },
-          { label: 'Approved',         value: approved,   icon: <CheckCircle className="w-5 h-5 text-green-500" />, color: 'text-green-600' },
-          { label: 'Under Review',     value: underReview, icon: <Clock className="w-5 h-5 text-amber-500" />,      color: 'text-amber-600' },
-          { label: 'Rejected',         value: rejected,   icon: <XCircle className="w-5 h-5 text-red-500" />,      color: 'text-red-600' },
+          { label: 'Total Submittals', value: totalCount,    icon: <FileText className="w-5 h-5 text-indigo-500" />,   color: 'text-indigo-600' },
+          { label: 'Approved',         value: approvedCount,  icon: <CheckCircle className="w-5 h-5 text-green-500" />, color: 'text-green-600' },
+          { label: 'Under Review',     value: reviewCount,    icon: <Clock className="w-5 h-5 text-amber-500" />,       color: 'text-amber-600' },
+          { label: 'Rejected',         value: rejectedCount,  icon: <XCircle className="w-5 h-5 text-red-500" />,       color: 'text-red-600' },
         ].map(c => (
           <div key={c.label} className="bg-white dark:bg-gray-800 rounded-lg border p-4 shadow-sm flex items-center gap-3">
             {c.icon}
@@ -89,10 +129,11 @@ export default function SubmittalsPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="space-y-2">
-        <div className="flex gap-2 flex-wrap">
-          {STATUS_FILTERS.map(f => (
+      {/* Status Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {STATUS_FILTERS.map(f => {
+          const label = f === 'All' ? 'All' : (STATUS_CONFIG[f]?.label ?? f)
+          return (
             <button
               key={f}
               onClick={() => setStatusFilter(f)}
@@ -103,75 +144,179 @@ export default function SubmittalsPage() {
                   : 'bg-white dark:bg-gray-800 border text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
               )}
             >
-              {f}
+              {label}
             </button>
-          ))}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {TYPE_FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setTypeFilter(f)}
-              className={cn(
-                'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-                typeFilter === f
-                  ? 'bg-gray-700 dark:bg-gray-200 text-white dark:text-gray-900'
-                  : 'bg-white dark:bg-gray-800 border text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-              )}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-700">
-            <tr>
-              {['Submittal #', 'Type', 'Description', 'Project', 'Submitted', 'Review Due', 'Rev', 'Status', 'Actions'].map(h => (
-                <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {filtered.map(s => {
-              const isOverdue = s.status !== 'approved' && s.reviewDue < TODAY
-              const tc = typeConfig[s.type]
-              const sc = statusConfig[s.status]
-              return (
-                <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-3 py-3 font-mono font-semibold text-indigo-600">{s.id}</td>
-                  <td className="px-3 py-3">
-                    <span className={cn('px-2 py-1 rounded-full text-xs font-medium', tc?.color)}>{tc?.label}</span>
-                  </td>
-                  <td className="px-3 py-3 max-w-xs truncate text-gray-800 dark:text-gray-200" title={s.description}>{s.description}</td>
-                  <td className="px-3 py-3 text-xs text-gray-500">{s.project}</td>
-                  <td className="px-3 py-3 text-gray-500">{formatDate(s.submitted)}</td>
-                  <td className={cn('px-3 py-3', isOverdue ? 'text-red-600 font-medium' : 'text-gray-500')}>
-                    {formatDate(s.reviewDue)}
-                  </td>
-                  <td className="px-3 py-3 text-center font-mono text-xs text-gray-600 dark:text-gray-400">{s.revision}</td>
-                  <td className="px-3 py-3">
-                    <span className={cn('px-2 py-1 rounded-full text-xs font-medium', sc?.color)}>{sc?.label}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <button className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-500 hover:text-gray-700" title="View">
-                      <Eye className="w-4 h-4" />
-                    </button>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading submittals…
+          </div>
+        ) : isError ? (
+          <div className="py-16 text-center text-red-500">Failed to load submittals. Please try again.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                {['Submittal #', 'Title', 'Project', 'Type', 'Submitted By', 'Rev', 'Status'].map(h => (
+                  <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {filtered.map((s: any) => {
+                const sc = STATUS_CONFIG[s.status]
+                const tc = TYPE_CONFIG[s.submittal_type]
+                return (
+                  <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-3 py-3 font-mono font-semibold text-indigo-600 whitespace-nowrap">{s.submittal_number}</td>
+                    <td className="px-3 py-3 max-w-[200px] truncate text-gray-800 dark:text-gray-200" title={s.title}>{s.title}</td>
+                    <td className="px-3 py-3 text-gray-600 dark:text-gray-400 text-xs">{s.project_id}</td>
+                    <td className="px-3 py-3">
+                      <span className={cn('px-2 py-1 rounded-full text-xs font-medium', tc?.color ?? 'bg-gray-100 text-gray-700')}>
+                        {tc?.label ?? s.submittal_type}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{s.submitted_by}</td>
+                    <td className="px-3 py-3 text-center font-mono text-xs text-gray-600 dark:text-gray-400">{s.revision ?? '—'}</td>
+                    <td className="px-3 py-3">
+                      <span className={cn('px-2 py-1 rounded-full text-xs font-medium', sc?.color ?? 'bg-gray-100 text-gray-700')}>
+                        {sc?.label ?? s.status}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-12 text-center text-gray-400">
+                    No submittals yet.
                   </td>
                 </tr>
-              )
-            })}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-gray-400">No submittals match the selected filters.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      {/* New Submittal Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Submittal</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="submittal_number">Submittal # <span className="text-red-500">*</span></Label>
+                <Input
+                  id="submittal_number"
+                  placeholder="SUB-001"
+                  value={form.submittal_number}
+                  onChange={e => set('submittal_number', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="revision">Revision</Label>
+                <Input
+                  id="revision"
+                  placeholder="A"
+                  value={form.revision}
+                  onChange={e => set('revision', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
+              <Input
+                id="title"
+                placeholder="Brief title for this submittal"
+                value={form.title}
+                onChange={e => set('title', e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="project_id">Project ID <span className="text-red-500">*</span></Label>
+                <Input
+                  id="project_id"
+                  placeholder="e.g. proj_001"
+                  value={form.project_id}
+                  onChange={e => set('project_id', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="submitted_by">Submitted By <span className="text-red-500">*</span></Label>
+                <Input
+                  id="submitted_by"
+                  placeholder="Name"
+                  value={form.submitted_by}
+                  onChange={e => set('submitted_by', e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="submittal_type">Type</Label>
+                <Select value={form.submittal_type} onValueChange={v => set('submittal_type', v)}>
+                  <SelectTrigger id="submittal_type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="shop_drawing">Shop Drawing</SelectItem>
+                    <SelectItem value="material_approval">Material Approval</SelectItem>
+                    <SelectItem value="method_statement">Method Statement</SelectItem>
+                    <SelectItem value="test_report">Test Report</SelectItem>
+                    <SelectItem value="inspection_test_plan">Inspection Test Plan</SelectItem>
+                    <SelectItem value="material_sample">Material Sample</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="spec_section">Spec Section</Label>
+                <Input
+                  id="spec_section"
+                  placeholder="e.g. 03300"
+                  value={form.spec_section}
+                  onChange={e => set('spec_section', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the submittal…"
+                rows={3}
+                value={form.description}
+                onChange={e => set('description', e.target.value)}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create Submittal
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
