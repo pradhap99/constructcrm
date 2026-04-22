@@ -99,7 +99,11 @@ def get_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    try:
+        _doc_id = uuid.UUID(doc_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    doc = db.query(Document).filter(Document.id == _doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return _to_response(doc)
@@ -111,7 +115,7 @@ def download_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == _doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     if doc.status != DocumentStatus.done or not doc.excel_path:
@@ -141,7 +145,7 @@ async def document_status_sse(
         poll_db = SessionLocal()
         try:
             for _ in range(120):  # max 2 minutes (120 × 1s)
-                doc = poll_db.query(Document).filter(Document.id == doc_id).first()
+                doc = poll_db.query(Document).filter(Document.id == _doc_id).first()
                 if not doc:
                     payload = json.dumps({"error": "not found"})
                     yield f"data: {payload}\n\n"

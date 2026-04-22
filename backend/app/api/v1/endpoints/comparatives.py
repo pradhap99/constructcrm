@@ -18,7 +18,11 @@ def list_comparatives(skip: int = 0, limit: int = 100, db: Session = Depends(get
 
 @router.get("/{item_id}", response_model=ComparativeResponse)
 def get_comparative(item_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Comparative).filter(Comparative.id == item_id).first()
+    try:
+        _item_id = uuid.UUID(item_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    item = db.query(Comparative).filter(Comparative.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Comparative not found")
     return item
@@ -35,7 +39,7 @@ def create_comparative(item_in: ComparativeCreate, db: Session = Depends(get_db)
 
 @router.put("/{item_id}", response_model=ComparativeResponse)
 def update_comparative(item_id: str, item_in: ComparativeUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Comparative).filter(Comparative.id == item_id).first()
+    item = db.query(Comparative).filter(Comparative.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Comparative not found")
     for field, value in item_in.model_dump(exclude_unset=True).items():
@@ -47,7 +51,7 @@ def update_comparative(item_id: str, item_in: ComparativeUpdate, db: Session = D
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_comparative(item_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Comparative).filter(Comparative.id == item_id).first()
+    item = db.query(Comparative).filter(Comparative.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Comparative not found")
     db.delete(item)

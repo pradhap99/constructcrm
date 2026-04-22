@@ -1,6 +1,7 @@
 from typing import List, Optional, Any
 from decimal import Decimal
 from datetime import date, datetime
+import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
@@ -84,7 +85,11 @@ def get_bill(
     current_user: User = Depends(get_current_user),
 ):
     from fastapi import HTTPException
-    item = db.query(Billing).filter(Billing.id == bill_id).first()
+    try:
+        _bill_id = uuid.UUID(bill_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    item = db.query(Billing).filter(Billing.id == _bill_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Bill not found")
     return BillResponse(**_enrich(item))

@@ -1,5 +1,6 @@
-from typing import Optional
-from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional, Any
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+from app.schemas._base import ResponseBase
 from app.models.user import UserRole
 
 
@@ -18,10 +19,14 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
 
 
-class UserResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class UserResponse(ResponseBase):
 
     id: str
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_id(cls, v: Any) -> str:
+        return str(v)
     email: str
     full_name: str
     role: UserRole

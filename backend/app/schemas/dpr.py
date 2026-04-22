@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.dpr import DPRStatus, WeatherCondition
 
 
@@ -42,8 +43,7 @@ class DPRUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class DPRResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class DPRResponse(ResponseBase):
 
     id: str
     dpr_number: str

@@ -25,7 +25,11 @@ def _run_agent_job(job_id: str) -> None:
     """Background task: runs real Claude AI for each job type."""
     db = SessionLocal()
     try:
-        job = db.query(AgentJob).filter(AgentJob.id == job_id).first()
+        try:
+            _job_id = uuid.UUID(job_id)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=404, detail="Not found")
+        job = db.query(AgentJob).filter(AgentJob.id == _job_id).first()
         if not job:
             return
         job.status = AgentJobStatus.running
@@ -40,7 +44,7 @@ def _run_agent_job(job_id: str) -> None:
         db.commit()
     except Exception as exc:
         try:
-            job = db.query(AgentJob).filter(AgentJob.id == job_id).first()
+            job = db.query(AgentJob).filter(AgentJob.id == _job_id).first()
             if job:
                 job.status = AgentJobStatus.failed
                 job.error_message = str(exc)
@@ -237,7 +241,7 @@ def get_agent_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    item = db.query(AgentJob).filter(AgentJob.id == job_id).first()
+    item = db.query(AgentJob).filter(AgentJob.id == _job_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Agent job not found")
     return AgentJobResponse(**_enrich(item))

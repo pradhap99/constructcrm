@@ -2,6 +2,7 @@ from typing import Optional, Any, Dict
 from decimal import Decimal
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.project import ProjectStatus, ProjectType
 
 
@@ -52,8 +53,7 @@ class ProjectUpdate(BaseModel):
     pan: Optional[str] = None
 
 
-class ProjectResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ProjectResponse(ResponseBase):
 
     id: str
     name: str

@@ -1,6 +1,7 @@
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.submittal import SubmittalStatus, SubmittalType
 
 
@@ -33,8 +34,7 @@ class SubmittalUpdate(BaseModel):
     comments: Optional[str] = None
 
 
-class SubmittalResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class SubmittalResponse(ResponseBase):
 
     id: str
     submittal_number: str

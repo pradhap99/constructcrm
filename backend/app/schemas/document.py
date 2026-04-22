@@ -1,11 +1,11 @@
 from typing import Optional, Any, Dict, List
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.document import DocumentStatus
 
 
-class DocumentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class DocumentResponse(ResponseBase):
 
     id: str
     original_name: str

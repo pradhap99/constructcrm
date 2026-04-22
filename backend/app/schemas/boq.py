@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.boq import BOQStatus
 
 
@@ -27,8 +28,7 @@ class BOQUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class BOQResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class BOQResponse(ResponseBase):
 
     id: str
     boq_number: str

@@ -1,6 +1,7 @@
 from typing import Optional, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.agent_job import AgentJobType, AgentJobStatus
 
 
@@ -10,8 +11,7 @@ class AgentJobCreate(BaseModel):
     input_data: Dict[str, Any] = {}
 
 
-class AgentJobResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class AgentJobResponse(ResponseBase):
 
     id: str
     job_type: AgentJobType

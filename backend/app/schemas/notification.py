@@ -1,6 +1,7 @@
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.notification import NotificationSeverity
 
 
@@ -12,8 +13,7 @@ class NotificationCreate(BaseModel):
     user_id: Optional[str] = None
 
 
-class NotificationResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class NotificationResponse(ResponseBase):
 
     id: str
     title: str

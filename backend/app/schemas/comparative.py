@@ -1,6 +1,7 @@
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.comparative import ComparativeStatus
 
 
@@ -27,8 +28,7 @@ class ComparativeUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class ComparativeResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ComparativeResponse(ResponseBase):
 
     id: str
     comparative_number: str

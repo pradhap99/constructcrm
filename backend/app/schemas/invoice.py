@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.invoice import InvoiceStatus, InvoiceType
 
 
@@ -56,8 +57,7 @@ class InvoiceUpdate(BaseModel):
     documents: Optional[List[Any]] = None
 
 
-class InvoiceResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class InvoiceResponse(ResponseBase):
 
     id: str
     invoice_number: str
