@@ -18,7 +18,11 @@ def list_submittals(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 @router.get("/{item_id}", response_model=SubmittalResponse)
 def get_submittal(item_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Submittal).filter(Submittal.id == item_id).first()
+    try:
+        _item_id = uuid.UUID(item_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    item = db.query(Submittal).filter(Submittal.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Submittal not found")
     return item
@@ -35,7 +39,7 @@ def create_submittal(item_in: SubmittalCreate, db: Session = Depends(get_db), cu
 
 @router.put("/{item_id}", response_model=SubmittalResponse)
 def update_submittal(item_id: str, item_in: SubmittalUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Submittal).filter(Submittal.id == item_id).first()
+    item = db.query(Submittal).filter(Submittal.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Submittal not found")
     for field, value in item_in.model_dump(exclude_unset=True).items():
@@ -47,7 +51,7 @@ def update_submittal(item_id: str, item_in: SubmittalUpdate, db: Session = Depen
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_submittal(item_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Submittal).filter(Submittal.id == item_id).first()
+    item = db.query(Submittal).filter(Submittal.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Submittal not found")
     db.delete(item)

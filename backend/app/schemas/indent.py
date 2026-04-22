@@ -1,6 +1,7 @@
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.indent import IndentStatus, UnitOfMeasure
 
 
@@ -28,8 +29,7 @@ class IndentUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class IndentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class IndentResponse(ResponseBase):
 
     id: str
     indent_number: str

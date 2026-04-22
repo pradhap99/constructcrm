@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.vendor import VendorCategory, VendorStatus
 
 
@@ -54,8 +55,7 @@ class VendorUpdate(BaseModel):
     documents: Optional[List[Any]] = None
 
 
-class VendorResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class VendorResponse(ResponseBase):
 
     id: str
     name: str

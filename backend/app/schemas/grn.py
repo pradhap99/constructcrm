@@ -1,6 +1,7 @@
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.grn import GRNStatus
 
 
@@ -34,8 +35,7 @@ class GRNUpdate(BaseModel):
     documents: Optional[List[Any]] = None
 
 
-class GRNResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class GRNResponse(ResponseBase):
 
     id: str
     grn_number: str

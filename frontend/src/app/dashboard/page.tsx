@@ -1,105 +1,115 @@
 'use client'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { analytics } from '@/lib/api'
-import { formatCurrencyCr, formatCurrency } from '@/lib/utils'
+import { analytics, projects as projectsApi } from '@/lib/api'
+import { formatCurrencyCr } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
 } from 'recharts'
 import {
-  IndianRupee, ShoppingCart, Package, Users, TrendingUp,
-  FileText, Building2, Target, AlertCircle, FileSearch, Brain
+  IndianRupee, ShoppingCart, FileText, Building2,
+  Target, TrendingUp, AlertCircle, Plus, ArrowRight,
+  Loader2,
 } from 'lucide-react'
-import type { DashboardStats } from '@/lib/types'
 
-const MOCK_STATS: DashboardStats = {
-  totalBudget: 125000000,
-  activePOs: 24,
-  pendingGRNs: 8,
-  totalManpower: 145,
-  monthlySpend: 18000000,
-  pendingInvoices: 12,
-  activeProjects: 5,
-  openLeads: 9,
-  spendByMonth: [
-    { month: 'Aug', amount: 12000000 },
-    { month: 'Sep', amount: 15000000 },
-    { month: 'Oct', amount: 11000000 },
-    { month: 'Nov', amount: 17000000 },
-    { month: 'Dec', amount: 14000000 },
-    { month: 'Jan', amount: 18000000 },
-  ],
-  topVendors: [
-    { name: 'Tata Steel Ltd', spend: 8500000, rating: 4.5 },
-    { name: 'ACC Cement', spend: 6200000, rating: 4.2 },
-    { name: 'L&T Infra', spend: 5800000, rating: 4.7 },
-    { name: 'Ultratech', spend: 4100000, rating: 4.0 },
-  ],
-  recentActivity: [
-    { id: '1', type: 'PO', description: 'PO-2024-0089 raised for Tata Steel', timestamp: '2024-01-15T10:30:00Z', status: 'approved' },
-    { id: '2', type: 'GRN', description: 'GRN-2024-0045 received for ACC Cement', timestamp: '2024-01-15T09:15:00Z', status: 'confirmed' },
-    { id: '3', type: 'Indent', description: 'Indent IND-2024-0112 pending approval', timestamp: '2024-01-15T08:00:00Z', status: 'pending_approval' },
-    { id: '4', type: 'Invoice', description: 'Invoice INV-2024-0078 approved', timestamp: '2024-01-14T16:45:00Z', status: 'approved' },
-    { id: '5', type: 'RFQ', description: 'RFQ-2024-0056 quotes received', timestamp: '2024-01-14T14:30:00Z', status: 'quotes_received' },
-  ],
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse bg-muted rounded ${className ?? ''}`} />
 }
 
-const kpiCards = (stats: DashboardStats) => [
-  { label: 'Total Budget', value: formatCurrencyCr(stats.totalBudget), icon: IndianRupee, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950' },
-  { label: 'Active POs', value: stats.activePOs.toString(), icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950' },
-  { label: 'Pending GRNs', value: stats.pendingGRNs.toString(), icon: Package, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950' },
-  { label: 'Manpower Today', value: stats.totalManpower.toString(), icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950' },
-  { label: 'Monthly Spend', value: formatCurrencyCr(stats.monthlySpend), icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950' },
-  { label: 'Pending Invoices', value: stats.pendingInvoices.toString(), icon: FileText, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950' },
-  { label: 'Active Projects', value: stats.activeProjects.toString(), icon: Building2, color: 'text-teal-600', bg: 'bg-teal-50 dark:bg-teal-950' },
-  { label: 'Open Leads', value: stats.openLeads.toString(), icon: Target, color: 'text-yellow-600', bg: 'bg-yellow-50 dark:bg-yellow-950' },
-]
-
-const statusColors: Record<string, string> = {
-  approved: 'success', confirmed: 'success', pending_approval: 'warning',
-  quotes_received: 'info', draft: 'secondary',
+const STATUS_COLOR: Record<string, string> = {
+  active:    'bg-green-100 text-green-700 border-green-200',
+  planning:  'bg-blue-100 text-blue-700 border-blue-200',
+  on_hold:   'bg-amber-100 text-amber-700 border-amber-200',
+  completed: 'bg-slate-100 text-slate-600 border-slate-200',
+  cancelled: 'bg-red-100 text-red-700 border-red-200',
 }
-
-const QUICK_ACTIONS = [
-  { label: 'Create Indent', icon: FileText, href: '/indents/new', color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950' },
-  { label: 'New RFQ', icon: FileSearch, href: null, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950' },
-  { label: 'Record GRN', icon: Package, href: null, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950' },
-  { label: 'Upload Document', icon: Brain, href: '/ai-reader', color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950' },
-]
-
-const PROJECT_STATUS_DATA = [
-  { name: 'Riverside Residential', budget: '₹4.5 Cr', progress: 58, status: 'active' },
-  { name: 'NH-48 Highway Package', budget: '₹8.2 Cr', progress: 84, status: 'active' },
-  { name: 'Tech Park Phase 2', budget: '₹6.0 Cr', progress: 38, status: 'planning' },
-]
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { data: statsData } = useQuery({
-    queryKey: ['dashboard-stats'],
+
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['analytics-stats'],
     queryFn: () => analytics.dashboardStats().then(r => r.data),
   })
-  const stats = statsData ?? MOCK_STATS
+  const { data: spendVendor = [], isLoading: vendorLoading } = useQuery({
+    queryKey: ['spend-vendor'],
+    queryFn: () => analytics.spendByVendor().then(r => r.data),
+  })
+  const { data: budgetActual = [], isLoading: chartLoading } = useQuery({
+    queryKey: ['budget-actual'],
+    queryFn: () => analytics.budgetVsActual().then(r => r.data),
+  })
+  const { data: projectsData, isLoading: projectsLoading } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.list().then(r => r.data),
+  })
+
+  const projectList: any[] = (projectsData as any)?.items ?? (Array.isArray(projectsData) ? projectsData : [])
+
+  const kpis = [
+    {
+      label: 'Total Budget',
+      value: statsLoading ? null : formatCurrencyCr(stats?.totalBudget ?? 0),
+      icon: IndianRupee, color: 'text-indigo-600', bg: 'bg-indigo-50',
+    },
+    {
+      label: 'Active Projects',
+      value: statsLoading ? null : String(stats?.activeProjects ?? 0),
+      icon: Building2, color: 'text-teal-600', bg: 'bg-teal-50',
+    },
+    {
+      label: 'Active POs',
+      value: statsLoading ? null : String(stats?.activePOs ?? 0),
+      icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50',
+    },
+    {
+      label: 'Pending Invoices',
+      value: statsLoading ? null : String(stats?.pendingInvoices ?? 0),
+      icon: FileText,
+      color: (stats?.pendingInvoices ?? 0) > 0 ? 'text-red-600' : 'text-slate-500',
+      bg: (stats?.pendingInvoices ?? 0) > 0 ? 'bg-red-50' : 'bg-slate-50',
+    },
+    {
+      label: 'Monthly Spend',
+      value: statsLoading ? null : formatCurrencyCr(stats?.monthlySpend ?? 0),
+      icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50',
+    },
+    {
+      label: 'Open Leads',
+      value: statsLoading ? null : String(stats?.openLeads ?? 0),
+      icon: Target, color: 'text-yellow-600', bg: 'bg-yellow-50',
+    },
+  ]
+
+  const quickActions = [
+    { label: 'New Project', icon: Building2, href: '/projects', color: 'text-teal-600', bg: 'bg-teal-50' },
+    { label: 'Create Indent', icon: FileText, href: '/indents', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Add Vendor', icon: Target, href: '/vendors', color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Record GRN', icon: ShoppingCart, href: '/grn', color: 'text-orange-600', bg: 'bg-orange-50' },
+  ]
 
   return (
-    <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {kpiCards(stats).map((kpi) => {
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+
+      {/* KPI Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
+        {kpis.map((kpi) => {
           const Icon = kpi.icon
           return (
             <Card key={kpi.label} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${kpi.bg}`}>
-                  <Icon className={`w-6 h-6 ${kpi.color}`} />
+              <CardContent className="p-4">
+                <div className={`inline-flex p-2 rounded-lg ${kpi.bg} mb-3`}>
+                  <Icon className={`w-4 h-4 ${kpi.color}`} />
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                  <p className="text-xl font-bold">{kpi.value}</p>
-                </div>
+                {kpi.value === null
+                  ? <Skeleton className="h-6 w-16 mb-1" />
+                  : <p className="text-xl font-bold leading-tight">{kpi.value}</p>
+                }
+                <p className="text-xs text-muted-foreground mt-0.5">{kpi.label}</p>
               </CardContent>
             </Card>
           )
@@ -108,29 +118,22 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {QUICK_ACTIONS.map((action) => {
-            const Icon = action.icon
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Quick Actions</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {quickActions.map((a) => {
+            const Icon = a.icon
             return (
-              <Card
-                key={action.label}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => {
-                  if (action.href) {
-                    router.push(action.href)
-                  } else {
-                    alert('Coming soon')
-                  }
-                }}
+              <button
+                key={a.label}
+                onClick={() => router.push(a.href)}
+                className="flex items-center gap-3 p-3.5 bg-white border border-border rounded-xl hover:shadow-md hover:border-indigo-200 transition-all text-left group"
               >
-                <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center min-h-[88px]">
-                  <div className={`p-2.5 rounded-xl ${action.bg}`}>
-                    <Icon className={`w-5 h-5 ${action.color}`} />
-                  </div>
-                  <p className="text-sm font-medium">{action.label}</p>
-                </CardContent>
-              </Card>
+                <div className={`p-2 rounded-lg ${a.bg} shrink-0`}>
+                  <Icon className={`w-4 h-4 ${a.color}`} />
+                </div>
+                <span className="text-sm font-medium">{a.label}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
             )
           })}
         </div>
@@ -139,95 +142,116 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Spend Chart */}
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Monthly Procurement Spend (₹)</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Budget vs Actual Spend (₹)</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stats.spendByMonth}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={(v) => `₹${(v / 1000000).toFixed(0)}L`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} name="Spend" />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartLoading ? (
+              <Skeleton className="h-56 w-full" />
+            ) : budgetActual.length === 0 ? (
+              <div className="h-56 flex flex-col items-center justify-center text-center gap-2">
+                <TrendingUp className="w-8 h-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">No spend data yet.</p>
+                <p className="text-xs text-muted-foreground">Create invoices to see spend trends.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={budgetActual} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v: number) => [`₹${(v / 100000).toFixed(1)}L`, '']} />
+                  <Bar dataKey="actual" fill="#6366f1" radius={[4, 4, 0, 0]} name="Actual" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
-        {/* Vendor Scorecard */}
+        {/* Top Vendors */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top Vendors by Spend</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Top Vendors by Spend</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {stats.topVendors.map((v) => (
-              <div key={v.name} className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{v.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatCurrencyCr(v.spend)}</p>
-                </div>
-                <Badge variant="outline" className="shrink-0">
-                  ★ {v.rating}
-                </Badge>
+          <CardContent>
+            {vendorLoading ? (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
               </div>
-            ))}
+            ) : spendVendor.length === 0 ? (
+              <div className="h-40 flex flex-col items-center justify-center text-center gap-2">
+                <AlertCircle className="w-7 h-7 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">No vendor spend yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(spendVendor as any[]).slice(0, 5).map((v: any) => (
+                  <div key={v.vendor_name ?? v.vendorName}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="font-medium truncate">{v.vendor_name ?? v.vendorName}</span>
+                      <span className="text-muted-foreground shrink-0 ml-2">{formatCurrencyCr(v.amount)}</span>
+                    </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full"
+                        style={{ width: `${v.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Project Status */}
+      {/* Projects */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Project Status</CardTitle>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Active Projects</CardTitle>
+          <button
+            onClick={() => router.push('/projects')}
+            className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium"
+          >
+            View all <ArrowRight className="w-3 h-3" />
+          </button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {PROJECT_STATUS_DATA.map((proj) => (
-              <div key={proj.name} className="flex items-center gap-4">
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium truncate">{proj.name}</p>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-muted-foreground">{proj.budget}</span>
-                      <Badge variant={proj.status === 'active' ? 'success' : 'secondary'} className="text-xs capitalize">
-                        {proj.status}
-                      </Badge>
-                    </div>
+          {projectsLoading ? (
+            <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : projectList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Building2 className="w-10 h-10 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground">No projects yet.</p>
+              <button
+                onClick={() => router.push('/projects')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Create your first project
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {projectList.slice(0, 5).map((p: any) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-4 py-3 hover:bg-muted/40 px-2 -mx-2 rounded-lg cursor-pointer transition-colors"
+                  onClick={() => router.push(`/projects`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{p.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{p.client_name} · {p.city}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Progress value={proj.progress} className="h-2 flex-1" />
-                    <span className="text-xs text-muted-foreground w-8 text-right">{proj.progress}%</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-muted-foreground">{formatCurrencyCr(p.budget_amount ?? 0)}</span>
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLOR[p.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                      {p.status?.replace('_', ' ')}
+                    </span>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Procurement Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {stats.recentActivity.map((act) => (
-              <div key={act.id} className="flex items-center gap-3 py-2 border-b last:border-0">
-                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">{act.description}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(act.timestamp).toLocaleString('en-IN')}</p>
-                </div>
-                <Badge variant={statusColors[act.status] as 'success' | 'warning' | 'info' | 'secondary' ?? 'secondary'}>
-                  {act.status.replace(/_/g, ' ')}
-                </Badge>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -23,7 +23,11 @@ def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id).first()
+    try:
+        pid = uuid.UUID(project_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = db.query(Project).filter(Project.id == pid).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
@@ -53,7 +57,11 @@ def update_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
+    try:
+        pid = uuid.UUID(project_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = db.query(Project).filter(Project.id == pid).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     for field, value in project_in.model_dump(exclude_unset=True).items():
@@ -69,7 +77,11 @@ def delete_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
+    try:
+        pid = uuid.UUID(project_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = db.query(Project).filter(Project.id == pid).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     db.delete(project)

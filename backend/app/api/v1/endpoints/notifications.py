@@ -59,7 +59,11 @@ def mark_seen(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    item = db.query(Notification).filter(Notification.id == notification_id).first()
+    try:
+        _notification_id = uuid.UUID(notification_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    item = db.query(Notification).filter(Notification.id == _notification_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Notification not found")
     item.is_seen = True

@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, model_validator
+from app.schemas._base import ResponseBase
 from app.models.billing import BillingStatus, BillingType
 
 
@@ -80,8 +81,7 @@ class BillingUpdate(BaseModel):
     documents: Optional[List[Any]] = None
 
 
-class BillingResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class BillingResponse(ResponseBase):
 
     id: str
     billing_number: str

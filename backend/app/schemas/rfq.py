@@ -1,6 +1,7 @@
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.rfq import RFQStatus
 
 
@@ -29,8 +30,7 @@ class RFQUpdate(BaseModel):
     responses: Optional[List[Any]] = None
 
 
-class RFQResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class RFQResponse(ResponseBase):
 
     id: str
     rfq_number: str

@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.change_order import ChangeOrderStatus, ChangeOrderType
 
 
@@ -33,8 +34,7 @@ class ChangeOrderUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class ChangeOrderResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ChangeOrderResponse(ResponseBase):
 
     id: str
     co_number: str

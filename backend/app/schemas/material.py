@@ -2,6 +2,7 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.material import MaterialStatus
 
 
@@ -30,8 +31,7 @@ class MaterialUpdate(BaseModel):
     status: Optional[MaterialStatus] = None
 
 
-class MaterialResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class MaterialResponse(ResponseBase):
 
     id: str
     name: str

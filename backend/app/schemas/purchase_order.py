@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
+from app.schemas._base import ResponseBase
 from app.models.purchase_order import POStatus
 
 
@@ -40,8 +41,7 @@ class PurchaseOrderUpdate(BaseModel):
     approved_by: Optional[str] = None
 
 
-class PurchaseOrderResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class PurchaseOrderResponse(ResponseBase):
 
     id: str
     po_number: str
