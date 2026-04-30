@@ -1,0 +1,601 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// CivilIQ — Prisma Schema
+// PostgreSQL 16 with pgvector + Row-Level Security (RLS)
+// See ADR-004 for full database architecture decisions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm, unaccent, uuid_ossp(map: "uuid-ossp")]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER          // Tenant admin — full access
+  PROJECT_MANAGER
+  QUANTITY_SURVEYOR
+  SITE_ENGINEER
+  PROCUREMENT_HEAD
+  FINANCE_CONTROLLER
+  SUBCONTRACTOR  // Limited to their own work packages
+  CLIENT         // Read-only portal access
+}
+
+enum ProjectStatus {
+  TENDER
+  AWARDED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectPhase {
+  PLANNING
+  MOBILISATION
+  EXECUTION
+  TESTING_COMMISSIONING
+  DEFECTS_LIABILITY
+  CLOSED
+}
+
+enum DocumentStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  EXTRACTED
+  MAPPED
+  COMPLETED
+  FAILED
+}
+
+enum DocumentType {
+  BOQ
+  MEASUREMENT_BOOK
+  RATE_ANALYSIS
+  MATERIAL_COMPARISON
+  RFI
+  SUBMITTAL
+  VARIATION_ORDER
+  RUNNING_ACCOUNT_BILL
+  SITE_MEMO
+  OTHER
+}
+
+enum MaterialStatus {
+  NOT_ORDERED
+  PO_RAISED
+  DELIVERED
+  INSTALLED
+  ON_HOLD
+  MISMATCH  // Spec mismatch detected
+}
+
+enum AgentType {
+  INTAKE
+  RECONCILIATION
+  CHASE
+  RISK
+  CLIENT_INTELLIGENCE
+  HANDOFF
+}
+
+enum AgentJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AlertSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum TenderStatus {
+  EXPRESSION_OF_INTEREST
+  BIDDING
+  SUBMITTED
+  UNDER_EVALUATION
+  NEGOTIATION
+  WON
+  LOST
+  WITHDRAWN
+}
+
+enum BillStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_CERTIFICATION
+  CERTIFIED
+  PAID
+  DISPUTED
+}
+
+enum PlanTier {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TENANTS — One per construction firm
+// No RLS on this table — accessed by auth layer only
+// ─────────────────────────────────────────────────────────────────────────────
+model Tenant {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String
+  slug        String   @unique  // URL-safe firm identifier: "abc-constructions"
+  planTier    PlanTier @default(STARTER)
+  logoUrl     String?
+  settings    Json     @default("{}")  // { defaultCurrency, defaultUnits, timezone, languagePreference }
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users             User[]
+  projects          Project[]
+  clients           Client[]
+  templateSchemas   TemplateSchema[]
+  documents         Document[]
+  materials         Material[]
+  tenders           Tender[]
+  agentJobs         AgentJob[]
+  notifications     Notification[]
+  subcontractors    Subcontractor[]
+  runningBills      RunningAccountBill[]
+
+  @@map("tenants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS
+// RLS: tenant_id = current_tenant_id (set at session start)
+// ─────────────────────────────────────────────────────────────────────────────
+model User {
+  id                 String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId           String    @db.Uuid
+  email              String
+  phone              String?
+  name               String
+  passwordHash       String
+  role               UserRole
+  languagePreference String    @default("en")  // en, hi, ta, te, ar
+  avatarUrl          String?
+  isActive           Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  notifications   Notification[]
+  documents       Document[]    @relation("UploadedBy")
+  agentJobs       AgentJob[]    @relation("CreatedBy")
+  measurementBooks MeasurementBook[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENTS — The construction firm's clients (project owners)
+// ─────────────────────────────────────────────────────────────────────────────
+model Client {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String   @db.Uuid
+  name              String
+  type              String   // Government, Private, PSU, PPP
+  contactName       String?
+  contactEmail      String?
+  contactPhone      String?
+  address           String?
+  gstNumber         String?
+  panNumber         String?
+  relationshipScore Int      @default(100)  // 0-100, computed by Client Intelligence Agent
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  projects  Project[]
+  tenders   Tender[]
+
+  @@index([tenantId])
+  @@map("clients")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECTS — Central entity. Everything links to project + tenant.
+// ─────────────────────────────────────────────────────────────────────────────
+model Project {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String        @db.Uuid
+  clientId        String        @db.Uuid
+  name            String
+  code            String        // Internal project code e.g. "PRJ-2024-001"
+  description     String?
+  contractValue   Decimal       @db.Decimal(18, 2)
+  currency        String        @default("INR")
+  status          ProjectStatus @default(IN_PROGRESS)
+  phase           ProjectPhase  @default(EXECUTION)
+  startDate       DateTime
+  endDate         DateTime
+  siteAddress     String?
+  siteLatitude    Float?
+  siteLongitude   Float?
+  siteRadiusMeters Int?         // For GPS geofencing on mobile
+  ifcFileUrl      String?       // BIM file in S3
+  planFileUrl     String?       // 2D PDF plan in S3
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant           Tenant             @relation(fields: [tenantId], references: [id])
+  client           Client             @relation(fields: [clientId], references: [id])
+  documents        Document[]
+  materials        Material[]
+  workPackages     WorkPackage[]
+  runningBills     RunningAccountBill[]
+  agentJobs        AgentJob[]
+  notifications    Notification[]
+  measurementBooks MeasurementBook[]
+  modelElements    ModelElement[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("projects")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORK PACKAGES — Breakdown of project scope
+// ─────────────────────────────────────────────────────────────────────────────
+model WorkPackage {
+  id           String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String  @db.Uuid
+  projectId    String  @db.Uuid
+  name         String
+  code         String
+  description  String?
+  unit         String   // m³, m², rm, kg, nos, etc.
+  quantity     Decimal  @db.Decimal(18, 3)
+  rate         Decimal  @db.Decimal(18, 2)
+  completedQty Decimal  @default(0) @db.Decimal(18, 3)
+  zone         String?  // Structural zone: Zone A, Block 1, etc.
+  level        String?  // Floor level: B2, Ground, 1st, etc.
+  startDate    DateTime?
+  endDate      DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project          Project           @relation(fields: [projectId], references: [id])
+  measurementBooks MeasurementBook[]
+  materials        Material[]
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("work_packages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE SCHEMAS — Company BOQ / rate templates (the core IP)
+// ─────────────────────────────────────────────────────────────────────────────
+model TemplateSchema {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String       @db.Uuid
+  name        String       // "Standard BOQ v3", "Highway Rate Schedule"
+  type        DocumentType
+  version     Int          @default(1)
+  schema      Json         // { columns: [{name, unit, required, formulaHint}], sections: [...] }
+  sampleFileUrl String?    // S3 URL of the original template uploaded by firm
+  isDefault   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  documents Document[]
+
+  @@index([tenantId])
+  @@map("template_schemas")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENTS — Uploaded files + AI processing results
+// ─────────────────────────────────────────────────────────────────────────────
+model Document {
+  id                 String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId           String         @db.Uuid
+  projectId          String         @db.Uuid
+  uploadedById       String         @db.Uuid
+  templateSchemaId   String?        @db.Uuid
+  name               String
+  type               DocumentType   @default(OTHER)
+  status             DocumentStatus @default(UPLOADED)
+  originalFileUrl    String         // S3 key for original upload
+  canonicalPdfUrl    String?        // S3 key for canonical PDF version
+  parsedJson         Json?          // Google DocAI structured output
+  extractedEntities  Json?          // Claude extraction: [{item, qty, unit, rate, spec, confidence}]
+  mappedTemplate     Json?          // Populated template object pre-Excel generation
+  deviationReport    Json?          // [{ field, expected, actual, severity }]
+  confidenceScores   Json?          // { overall, perField: {fieldName: score} }
+  excelOutputUrl     String?        // S3 key for generated Excel
+  errorMessage       String?
+  processingMetadata Json           @default("{}")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  project        Project         @relation(fields: [projectId], references: [id])
+  uploadedBy     User            @relation("UploadedBy", fields: [uploadedById], references: [id])
+  templateSchema TemplateSchema? @relation(fields: [templateSchemaId], references: [id])
+  embeddings     DocumentEmbedding[]
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([status])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENT EMBEDDINGS — pgvector for semantic search
+// ─────────────────────────────────────────────────────────────────────────────
+model DocumentEmbedding {
+  id          String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String                 @db.Uuid
+  documentId  String                 @db.Uuid
+  chunkIndex  Int
+  chunkText   String
+  embedding   Unsupported("vector(1536)")
+  createdAt   DateTime               @default(now())
+
+  document  Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentId])
+  @@map("document_embeddings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATERIALS — The reconciliation core (ordered vs received vs billed)
+// ─────────────────────────────────────────────────────────────────────────────
+model Material {
+  id                String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String         @db.Uuid
+  projectId         String         @db.Uuid
+  workPackageId     String?        @db.Uuid
+  subcontractorId   String?        @db.Uuid
+  name              String
+  specification     String         // e.g. "M30 grade concrete as per IS:456"
+  unit              String         // m³, kg, nos, rm, sqm
+  status            MaterialStatus @default(NOT_ORDERED)
+  modelElementId    String?        @db.Uuid  // Links to BIM element
+
+  // The three quantities the Reconciliation Agent monitors
+  quantityOrdered   Decimal        @default(0) @db.Decimal(18, 3)
+  quantityDelivered Decimal        @default(0) @db.Decimal(18, 3)
+  quantityBilled    Decimal        @default(0) @db.Decimal(18, 3)
+  quantityInstalled Decimal        @default(0) @db.Decimal(18, 3)
+
+  ratePerUnit       Decimal?       @db.Decimal(18, 2)
+  supplierName      String?
+  poNumber          String?
+  poDate            DateTime?
+  deliveryDate      DateTime?
+  grnNumber         String?        // Goods Received Note
+  deliveredSpec     String?        // What was actually delivered (for mismatch detection)
+
+  notes             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  project       Project        @relation(fields: [projectId], references: [id])
+  workPackage   WorkPackage?   @relation(fields: [workPackageId], references: [id])
+  subcontractor Subcontractor? @relation(fields: [subcontractorId], references: [id])
+  modelElement  ModelElement?  @relation(fields: [modelElementId], references: [id])
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([status])
+  @@map("materials")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODEL ELEMENTS — IFC element metadata (BIM visualization layer)
+// ─────────────────────────────────────────────────────────────────────────────
+model ModelElement {
+  id           String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String  @db.Uuid
+  projectId    String  @db.Uuid
+  ifcGlobalId  String  // IFC GlobalId from BIM file
+  elementType  String  // IfcColumn, IfcBeam, IfcSlab, IfcWall, etc.
+  name         String?
+  zone         String?
+  level        String?
+  colorStatus  String  @default("NOT_ORDERED")  // Mirrors MaterialStatus for renderer
+
+  project   Project    @relation(fields: [projectId], references: [id])
+  materials Material[]
+
+  @@unique([projectId, ifcGlobalId])
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("model_elements")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEASUREMENT BOOKS — Daily site progress entries
+// ─────────────────────────────────────────────────────────────────────────────
+model MeasurementBook {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String   @db.Uuid
+  projectId     String   @db.Uuid
+  workPackageId String   @db.Uuid
+  submittedById String   @db.Uuid
+  date          DateTime @db.Date
+  quantity      Decimal  @db.Decimal(18, 3)
+  unit          String
+  remarks       String?
+  photoUrls     String[] // Array of S3 keys
+  gpsLat        Float?
+  gpsLng        Float?
+  syncedFromMobile Boolean @default(false)
+  createdAt     DateTime @default(now())
+
+  project     Project     @relation(fields: [projectId], references: [id])
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id])
+  submittedBy User        @relation(fields: [submittedById], references: [id])
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("measurement_books")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUNNING ACCOUNT BILLS — RA billing cycle tracker
+// ─────────────────────────────────────────────────────────────────────────────
+model RunningAccountBill {
+  id            String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String     @db.Uuid
+  projectId     String     @db.Uuid
+  billNumber    String     // "RA-001", "RA-002"
+  billDate      DateTime
+  status        BillStatus @default(DRAFT)
+  grossAmount   Decimal    @db.Decimal(18, 2)
+  deductions    Decimal    @default(0) @db.Decimal(18, 2)
+  netAmount     Decimal    @db.Decimal(18, 2)
+  certifiedAmount Decimal? @db.Decimal(18, 2)
+  paidAmount    Decimal    @default(0) @db.Decimal(18, 2)
+  submittedDate DateTime?
+  certifiedDate DateTime?
+  paidDate      DateTime?
+  notes         String?
+  documentUrl   String?    // S3 key for bill document
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("running_account_bills")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TENDERS — Pre-award CRM pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+model Tender {
+  id              String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String       @db.Uuid
+  clientId        String?      @db.Uuid
+  name            String
+  referenceNumber String?
+  status          TenderStatus @default(EXPRESSION_OF_INTEREST)
+  estimatedValue  Decimal?     @db.Decimal(18, 2)
+  bidValue        Decimal?     @db.Decimal(18, 2)
+  winProbability  Int?         // 0-100, AI-scored
+  submissionDate  DateTime?
+  resultDate      DateTime?
+  notes           String?
+  metadata        Json         @default("{}")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client? @relation(fields: [clientId], references: [id])
+
+  @@index([tenantId])
+  @@map("tenders")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBCONTRACTORS
+// ─────────────────────────────────────────────────────────────────────────────
+model Subcontractor {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId         String   @db.Uuid
+  name             String
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  specialisation   String[] // ["RCC", "Steel", "MEP", "Finishing"]
+  performanceScore Int      @default(100)  // 0-100, computed from delivery history
+  isBlacklisted    Boolean  @default(false)
+  gstNumber        String?
+  panNumber        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  materials Material[]
+
+  @@index([tenantId])
+  @@map("subcontractors")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT JOBS — Audit log of all AI agent executions
+// ─────────────────────────────────────────────────────────────────────────────
+model AgentJob {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String         @db.Uuid
+  projectId   String?        @db.Uuid
+  createdById String?        @db.Uuid
+  agentType   AgentType
+  status      AgentJobStatus @default(QUEUED)
+  input       Json           @default("{}")
+  output      Json?
+  errorMessage String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  createdAt   DateTime       @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+  createdBy User?    @relation("CreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([agentType, status])
+  @@map("agent_jobs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS — Durable event log for real-time + missed event replay
+// ─────────────────────────────────────────────────────────────────────────────
+model Notification {
+  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String        @db.Uuid
+  projectId   String?       @db.Uuid
+  userId      String?       @db.Uuid  // null = broadcast to all project members
+  eventType   String        // "document.processed", "material.mismatch", "agent.risk_alert"
+  severity    AlertSeverity @default(INFO)
+  title       String
+  body        String
+  payload     Json          @default("{}")
+  seen        Boolean       @default(false)
+  seenAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId, seen])
+  @@index([projectId, createdAt])
+  @@map("notifications")
+}
