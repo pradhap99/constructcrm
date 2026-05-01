@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth,
     analytics,
+    ai_reader,
     users,
     projects,
     leads,
@@ -58,3 +59,4 @@ api_router.include_router(team.router)
 api_router.include_router(clients.router)
 api_router.include_router(bills.router)
 api_router.include_router(documents.router)
+api_router.include_router(ai_reader.router)

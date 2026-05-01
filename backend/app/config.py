@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str = ""        # Free — get at console.groq.com
+    GEMINI_API_KEY: str = ""      # Free tier — get at aistudio.google.com
+    HF_API_KEY: str = ""          # Free — get at huggingface.co/settings/tokens
+    HF_SENTENCE_MODEL: str = ""  # After training: set to "your_username/devis-matcher"
     UPLOAD_DIR: str = "uploads"
 
     class Config:
