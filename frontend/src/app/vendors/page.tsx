@@ -156,7 +156,7 @@ export default function VendorsPage() {
     statusFilter === 'all' ? items : items.filter((v) => v.status === statusFilter)
 
   const createMutation = useMutation({
-    mutationFn: (payload: Partial<Vendor>) => vendors.create(payload),
+    mutationFn: (payload: Partial<Vendor>) => vendors.create(payload as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] })
       toast.success('Vendor created')

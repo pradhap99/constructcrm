@@ -7,7 +7,7 @@ interface Toast {
   variant?: 'default' | 'destructive' | 'success'
 }
 
-let toastHandlers: ((toast: Toast) => void)[] = []
+const toastHandlers: ((toast: Toast) => void)[] = []
 
 export function useToast() {
   const [toasts, setToasts] = useState<Toast[]>([])

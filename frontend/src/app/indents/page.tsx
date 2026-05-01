@@ -70,12 +70,12 @@ export default function IndentsPage() {
     queryFn: () => indentsApi.list(),
   })
 
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const filtered = tab === 'all' ? items : items.filter((i: any) => i.status === tab)
 
   const createMutation = useMutation({
-    mutationFn: (payload: Partial<NewIndentForm>) => indentsApi.create(payload),
+    mutationFn: (payload: Partial<NewIndentForm>) => indentsApi.create(payload as any),
     onSuccess: () => {
       toast.success('Indent created successfully')
       queryClient.invalidateQueries({ queryKey: ['indents'] })

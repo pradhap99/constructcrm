@@ -1,7 +1,7 @@
 'use client'
 import { useState, useCallback, useRef } from 'react'
 import {
-  Upload, FileText, Brain, Loader2, Download, CheckCircle,
+  FileText, Brain, Loader2, Download, CheckCircle,
   X, Plus, Sparkles, AlertCircle, FileUp, Copy, RotateCcw,
   FileSpreadsheet, FileType,
 } from 'lucide-react'
@@ -231,7 +231,6 @@ export default function AIReaderPage() {
       ) {
         // ── Binary file response (Excel or Word) ──────────────────────────
         const blob = await res.blob()
-        const vendorNamesHeader = res.headers.get('x-vendor-names') ?? ''
         const vendorNames = vendorFiles.map(f => f.file.name)
 
         setResult({
