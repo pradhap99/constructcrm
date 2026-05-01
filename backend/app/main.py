@@ -11,6 +11,17 @@ import app.models  # noqa: F401 — ensure all models are registered before crea
 async def lifespan(app: FastAPI):
     # Creates any tables that don't yet exist (safe to run on every startup)
     Base.metadata.create_all(bind=engine)
+
+    # Pre-load the sentence-transformer model on startup so the first user
+    # request doesn't trigger a ~60 second cold download from HuggingFace.
+    # If HF_SENTENCE_MODEL is set, loads your fine-tuned model.
+    # If not set, loads the default paraphrase-multilingual-mpnet-base-v2.
+    try:
+        from app.services.ai_reader import _get_sentence_model
+        _get_sentence_model()
+    except Exception as e:
+        print(f"[Startup] Sentence model preload skipped: {e}")
+
     yield
 
 

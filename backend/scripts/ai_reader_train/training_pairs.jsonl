@@ -1,0 +1,180 @@
+{"anchor": "Peinture sur murs", "positive": "Peinture murs"}
+{"anchor": "Peinture sur murs", "positive": "PEINTURE MURS 2 COUCHES"}
+{"anchor": "Peinture sur murs", "positive": "Peinture acrylique murs"}
+{"anchor": "Peinture sur murs", "positive": "Application peinture sur murs"}
+{"anchor": "Peinture murs", "positive": "PEINTURE MURS 2 COUCHES"}
+{"anchor": "Peinture murs", "positive": "Peinture acrylique murs"}
+{"anchor": "Peinture murs", "positive": "Application peinture sur murs"}
+{"anchor": "PEINTURE MURS 2 COUCHES", "positive": "Peinture acrylique murs"}
+{"anchor": "PEINTURE MURS 2 COUCHES", "positive": "Application peinture sur murs"}
+{"anchor": "Peinture acrylique murs", "positive": "Application peinture sur murs"}
+{"anchor": "Peinture sur plafonds", "positive": "Peinture plafonds"}
+{"anchor": "Peinture sur plafonds", "positive": "PEINTURE PLAFONDS"}
+{"anchor": "Peinture sur plafonds", "positive": "Peinture acrylique plafonds"}
+{"anchor": "Peinture sur plafonds", "positive": "Plafond peinture 2 couches"}
+{"anchor": "Peinture plafonds", "positive": "PEINTURE PLAFONDS"}
+{"anchor": "Peinture plafonds", "positive": "Peinture acrylique plafonds"}
+{"anchor": "Peinture plafonds", "positive": "Plafond peinture 2 couches"}
+{"anchor": "PEINTURE PLAFONDS", "positive": "Peinture acrylique plafonds"}
+{"anchor": "PEINTURE PLAFONDS", "positive": "Plafond peinture 2 couches"}
+{"anchor": "Peinture acrylique plafonds", "positive": "Plafond peinture 2 couches"}
+{"anchor": "Ravalement façade", "positive": "Ravalement de façade"}
+{"anchor": "Ravalement façade", "positive": "RAVALEMENT FACADE"}
+{"anchor": "Ravalement façade", "positive": "Ravalement enduit façade"}
+{"anchor": "Ravalement façade", "positive": "Façade ravalement"}
+{"anchor": "Ravalement de façade", "positive": "RAVALEMENT FACADE"}
+{"anchor": "Ravalement de façade", "positive": "Ravalement enduit façade"}
+{"anchor": "Ravalement de façade", "positive": "Façade ravalement"}
+{"anchor": "RAVALEMENT FACADE", "positive": "Ravalement enduit façade"}
+{"anchor": "RAVALEMENT FACADE", "positive": "Façade ravalement"}
+{"anchor": "Ravalement enduit façade", "positive": "Façade ravalement"}
+{"anchor": "Sous-couche primaire", "positive": "Sous couche"}
+{"anchor": "Sous-couche primaire", "positive": "SOUS COUCHE PRIMAIRE"}
+{"anchor": "Sous-couche primaire", "positive": "Impression primaire"}
+{"anchor": "Sous-couche primaire", "positive": "Application sous-couche"}
+{"anchor": "Sous couche", "positive": "SOUS COUCHE PRIMAIRE"}
+{"anchor": "Sous couche", "positive": "Impression primaire"}
+{"anchor": "Sous couche", "positive": "Application sous-couche"}
+{"anchor": "SOUS COUCHE PRIMAIRE", "positive": "Impression primaire"}
+{"anchor": "SOUS COUCHE PRIMAIRE", "positive": "Application sous-couche"}
+{"anchor": "Impression primaire", "positive": "Application sous-couche"}
+{"anchor": "Isolation thermique murs", "positive": "Isolation murs"}
+{"anchor": "Isolation thermique murs", "positive": "ITI murs"}
+{"anchor": "Isolation thermique murs", "positive": "ISOLATION THERMIQUE INTERIEURE"}
+{"anchor": "Isolation thermique murs", "positive": "Doublage isolant murs"}
+{"anchor": "Isolation murs", "positive": "ITI murs"}
+{"anchor": "Isolation murs", "positive": "ISOLATION THERMIQUE INTERIEURE"}
+{"anchor": "Isolation murs", "positive": "Doublage isolant murs"}
+{"anchor": "ITI murs", "positive": "ISOLATION THERMIQUE INTERIEURE"}
+{"anchor": "ITI murs", "positive": "Doublage isolant murs"}
+{"anchor": "ISOLATION THERMIQUE INTERIEURE", "positive": "Doublage isolant murs"}
+{"anchor": "Carrelage sol", "positive": "Carrelage sols"}
+{"anchor": "Carrelage sol", "positive": "POSE CARRELAGE SOL"}
+{"anchor": "Carrelage sol", "positive": "Revêtement carrelage sol"}
+{"anchor": "Carrelage sol", "positive": "Carrelage sol 60x60"}
+{"anchor": "Carrelage sols", "positive": "POSE CARRELAGE SOL"}
+{"anchor": "Carrelage sols", "positive": "Revêtement carrelage sol"}
+{"anchor": "Carrelage sols", "positive": "Carrelage sol 60x60"}
+{"anchor": "POSE CARRELAGE SOL", "positive": "Revêtement carrelage sol"}
+{"anchor": "POSE CARRELAGE SOL", "positive": "Carrelage sol 60x60"}
+{"anchor": "Revêtement carrelage sol", "positive": "Carrelage sol 60x60"}
+{"anchor": "Électricité tableau", "positive": "Tableau électrique"}
+{"anchor": "Électricité tableau", "positive": "TABLEAU ELECTRIQUE"}
+{"anchor": "Électricité tableau", "positive": "Coffret électrique"}
+{"anchor": "Électricité tableau", "positive": "Armoire électrique"}
+{"anchor": "Tableau électrique", "positive": "TABLEAU ELECTRIQUE"}
+{"anchor": "Tableau électrique", "positive": "Coffret électrique"}
+{"anchor": "Tableau électrique", "positive": "Armoire électrique"}
+{"anchor": "TABLEAU ELECTRIQUE", "positive": "Coffret électrique"}
+{"anchor": "TABLEAU ELECTRIQUE", "positive": "Armoire électrique"}
+{"anchor": "Coffret électrique", "positive": "Armoire électrique"}
+{"anchor": "Plomberie sanitaire", "positive": "Sanitaires"}
+{"anchor": "Plomberie sanitaire", "positive": "PLOMBERIE SANITAIRE"}
+{"anchor": "Plomberie sanitaire", "positive": "Installation sanitaire"}
+{"anchor": "Plomberie sanitaire", "positive": "Équipements sanitaires"}
+{"anchor": "Sanitaires", "positive": "PLOMBERIE SANITAIRE"}
+{"anchor": "Sanitaires", "positive": "Installation sanitaire"}
+{"anchor": "Sanitaires", "positive": "Équipements sanitaires"}
+{"anchor": "PLOMBERIE SANITAIRE", "positive": "Installation sanitaire"}
+{"anchor": "PLOMBERIE SANITAIRE", "positive": "Équipements sanitaires"}
+{"anchor": "Installation sanitaire", "positive": "Équipements sanitaires"}
+{"anchor": "Menuiserie aluminium", "positive": "Menuiseries alu"}
+{"anchor": "Menuiserie aluminium", "positive": "MENUISERIES ALUMINIUM"}
+{"anchor": "Menuiserie aluminium", "positive": "Fenêtres aluminium"}
+{"anchor": "Menuiserie aluminium", "positive": "Huisseries aluminium"}
+{"anchor": "Menuiseries alu", "positive": "MENUISERIES ALUMINIUM"}
+{"anchor": "Menuiseries alu", "positive": "Fenêtres aluminium"}
+{"anchor": "Menuiseries alu", "positive": "Huisseries aluminium"}
+{"anchor": "MENUISERIES ALUMINIUM", "positive": "Fenêtres aluminium"}
+{"anchor": "MENUISERIES ALUMINIUM", "positive": "Huisseries aluminium"}
+{"anchor": "Fenêtres aluminium", "positive": "Huisseries aluminium"}
+{"anchor": "Charpente bois", "positive": "Charpente"}
+{"anchor": "Charpente bois", "positive": "CHARPENTE BOIS"}
+{"anchor": "Charpente bois", "positive": "Structure charpente"}
+{"anchor": "Charpente bois", "positive": "Ossature bois charpente"}
+{"anchor": "Charpente", "positive": "CHARPENTE BOIS"}
+{"anchor": "Charpente", "positive": "Structure charpente"}
+{"anchor": "Charpente", "positive": "Ossature bois charpente"}
+{"anchor": "CHARPENTE BOIS", "positive": "Structure charpente"}
+{"anchor": "CHARPENTE BOIS", "positive": "Ossature bois charpente"}
+{"anchor": "Structure charpente", "positive": "Ossature bois charpente"}
+{"anchor": "Maçonnerie gros œuvre", "positive": "Maçonnerie"}
+{"anchor": "Maçonnerie gros œuvre", "positive": "MACONNERIE GROS OEUVRE"}
+{"anchor": "Maçonnerie gros œuvre", "positive": "Gros œuvre maçonnerie"}
+{"anchor": "Maçonnerie gros œuvre", "positive": "Travaux maçonnerie"}
+{"anchor": "Maçonnerie", "positive": "MACONNERIE GROS OEUVRE"}
+{"anchor": "Maçonnerie", "positive": "Gros œuvre maçonnerie"}
+{"anchor": "Maçonnerie", "positive": "Travaux maçonnerie"}
+{"anchor": "MACONNERIE GROS OEUVRE", "positive": "Gros œuvre maçonnerie"}
+{"anchor": "MACONNERIE GROS OEUVRE", "positive": "Travaux maçonnerie"}
+{"anchor": "Gros œuvre maçonnerie", "positive": "Travaux maçonnerie"}
+{"anchor": "Enduit de façade", "positive": "Enduit façade"}
+{"anchor": "Enduit de façade", "positive": "ENDUIT FACADE"}
+{"anchor": "Enduit de façade", "positive": "Application enduit"}
+{"anchor": "Enduit de façade", "positive": "Crépi façade"}
+{"anchor": "Enduit façade", "positive": "ENDUIT FACADE"}
+{"anchor": "Enduit façade", "positive": "Application enduit"}
+{"anchor": "Enduit façade", "positive": "Crépi façade"}
+{"anchor": "ENDUIT FACADE", "positive": "Application enduit"}
+{"anchor": "ENDUIT FACADE", "positive": "Crépi façade"}
+{"anchor": "Application enduit", "positive": "Crépi façade"}
+{"anchor": "Étanchéité toiture terrasse", "positive": "Étanchéité toiture"}
+{"anchor": "Étanchéité toiture terrasse", "positive": "ETANCHEITE TOITURE"}
+{"anchor": "Étanchéité toiture terrasse", "positive": "Revêtement étanchéité"}
+{"anchor": "Étanchéité toiture terrasse", "positive": "Imperméabilisation toiture"}
+{"anchor": "Étanchéité toiture", "positive": "ETANCHEITE TOITURE"}
+{"anchor": "Étanchéité toiture", "positive": "Revêtement étanchéité"}
+{"anchor": "Étanchéité toiture", "positive": "Imperméabilisation toiture"}
+{"anchor": "ETANCHEITE TOITURE", "positive": "Revêtement étanchéité"}
+{"anchor": "ETANCHEITE TOITURE", "positive": "Imperméabilisation toiture"}
+{"anchor": "Revêtement étanchéité", "positive": "Imperméabilisation toiture"}
+{"anchor": "Faux plafond BA13", "positive": "Faux plafond"}
+{"anchor": "Faux plafond BA13", "positive": "FAUX PLAFOND BA13"}
+{"anchor": "Faux plafond BA13", "positive": "Plafond suspendu"}
+{"anchor": "Faux plafond BA13", "positive": "Plafond BA13 suspendu"}
+{"anchor": "Faux plafond", "positive": "FAUX PLAFOND BA13"}
+{"anchor": "Faux plafond", "positive": "Plafond suspendu"}
+{"anchor": "Faux plafond", "positive": "Plafond BA13 suspendu"}
+{"anchor": "FAUX PLAFOND BA13", "positive": "Plafond suspendu"}
+{"anchor": "FAUX PLAFOND BA13", "positive": "Plafond BA13 suspendu"}
+{"anchor": "Plafond suspendu", "positive": "Plafond BA13 suspendu"}
+{"anchor": "Cloison BA13", "positive": "Cloison"}
+{"anchor": "Cloison BA13", "positive": "CLOISON PLACO"}
+{"anchor": "Cloison BA13", "positive": "Cloison plâtre"}
+{"anchor": "Cloison BA13", "positive": "Paroi intérieure BA13"}
+{"anchor": "Cloison", "positive": "CLOISON PLACO"}
+{"anchor": "Cloison", "positive": "Cloison plâtre"}
+{"anchor": "Cloison", "positive": "Paroi intérieure BA13"}
+{"anchor": "CLOISON PLACO", "positive": "Cloison plâtre"}
+{"anchor": "CLOISON PLACO", "positive": "Paroi intérieure BA13"}
+{"anchor": "Cloison plâtre", "positive": "Paroi intérieure BA13"}
+{"anchor": "Revêtement sol PVC", "positive": "Sol PVC"}
+{"anchor": "Revêtement sol PVC", "positive": "REVETEMENT SOL PVC"}
+{"anchor": "Revêtement sol PVC", "positive": "Lino sol"}
+{"anchor": "Revêtement sol PVC", "positive": "Dalle PVC sol"}
+{"anchor": "Sol PVC", "positive": "REVETEMENT SOL PVC"}
+{"anchor": "Sol PVC", "positive": "Lino sol"}
+{"anchor": "Sol PVC", "positive": "Dalle PVC sol"}
+{"anchor": "REVETEMENT SOL PVC", "positive": "Lino sol"}
+{"anchor": "REVETEMENT SOL PVC", "positive": "Dalle PVC sol"}
+{"anchor": "Lino sol", "positive": "Dalle PVC sol"}
+{"anchor": "Nettoyage fin de chantier", "positive": "Nettoyage chantier"}
+{"anchor": "Nettoyage fin de chantier", "positive": "NETTOYAGE FIN CHANTIER"}
+{"anchor": "Nettoyage fin de chantier", "positive": "Nettoyage général"}
+{"anchor": "Nettoyage fin de chantier", "positive": "Remise en état propreté"}
+{"anchor": "Nettoyage chantier", "positive": "NETTOYAGE FIN CHANTIER"}
+{"anchor": "Nettoyage chantier", "positive": "Nettoyage général"}
+{"anchor": "Nettoyage chantier", "positive": "Remise en état propreté"}
+{"anchor": "NETTOYAGE FIN CHANTIER", "positive": "Nettoyage général"}
+{"anchor": "NETTOYAGE FIN CHANTIER", "positive": "Remise en état propreté"}
+{"anchor": "Nettoyage général", "positive": "Remise en état propreté"}
+{"anchor": "Installation échafaudage", "positive": "Échafaudage"}
+{"anchor": "Installation échafaudage", "positive": "ECHAFAUDAGE"}
+{"anchor": "Installation échafaudage", "positive": "Montage échafaudage"}
+{"anchor": "Installation échafaudage", "positive": "Mise en place échafaudage"}
+{"anchor": "Échafaudage", "positive": "ECHAFAUDAGE"}
+{"anchor": "Échafaudage", "positive": "Montage échafaudage"}
+{"anchor": "Échafaudage", "positive": "Mise en place échafaudage"}
+{"anchor": "ECHAFAUDAGE", "positive": "Montage échafaudage"}
+{"anchor": "ECHAFAUDAGE", "positive": "Mise en place échafaudage"}
+{"anchor": "Montage échafaudage", "positive": "Mise en place échafaudage"}
