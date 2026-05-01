@@ -59,7 +59,7 @@ export default function DPRPage() {
     queryKey: ['dpr'],
     queryFn: () => dpr.list(),
   })
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => dpr.create(payload),

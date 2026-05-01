@@ -46,7 +46,7 @@ export default function RFQPage() {
     queryFn: () => rfqApi.list(),
   })
 
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const createMutation = useMutation({
     mutationFn: (payload: Partial<NewRFQForm>) => rfqApi.create(payload),

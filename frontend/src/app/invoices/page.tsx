@@ -62,7 +62,7 @@ export default function InvoicesPage() {
     queryKey: ['invoices'],
     queryFn: () => invoices.list(),
   })
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => invoices.create(payload),

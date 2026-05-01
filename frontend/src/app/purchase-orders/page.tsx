@@ -75,7 +75,7 @@ export default function PurchaseOrdersPage() {
     queryFn: () => purchaseOrdersApi.list(),
   })
 
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const filtered = tab === 'all' ? items : items.filter((po: any) => po.status === tab)
 

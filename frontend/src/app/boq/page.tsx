@@ -50,7 +50,7 @@ export default function BOQPage() {
     queryKey: ['boq'],
     queryFn: () => apiClient.get('/boq'),
   })
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => apiClient.post('/boq', payload),

@@ -56,7 +56,7 @@ export default function GRNPage() {
     queryKey: ['grn'],
     queryFn: () => grn.list(),
   })
-  const items = data?.data ?? []
+  const items: any[] = Array.isArray(data?.data) ? data.data : []
 
   const createMutation = useMutation({
     mutationFn: (payload: typeof form) => grn.create(payload),
