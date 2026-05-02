@@ -38,3 +38,4 @@ redis_data/
 
 # Uploads (local dev)
 apps/api/uploads/
+.vercel
