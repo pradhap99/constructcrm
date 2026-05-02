@@ -38,3 +38,4 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+backend/model_output/
