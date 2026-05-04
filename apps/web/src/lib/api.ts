@@ -16,6 +16,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
+  let data: any;
+  try { data = await res.json(); } catch { data = {}; }
+
   if (res.status === 401) {
     localStorage.removeItem('civiliq_token');
     localStorage.removeItem('civiliq_user');
@@ -23,8 +26,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error('Unauthorized');
   }
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Request failed');
+  if (!res.ok) {
+    const detail = data?.detail;
+    let msg: string;
+    if (typeof detail === 'string') {
+      msg = detail;
+    } else if (Array.isArray(detail)) {
+      msg = detail.map((e: any) => e?.msg || JSON.stringify(e)).join(', ');
+    } else if (typeof data?.message === 'string') {
+      msg = data.message;
+    } else {
+      msg = `Request failed (${res.status})`;
+    }
+    throw new Error(msg);
+  }
   return data;
 }
 
