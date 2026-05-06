@@ -1002,7 +1002,7 @@ async def _call_claude(api_key: str, system: str, user: str) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=api_key, timeout=_PROVIDER_TIMEOUT)
     msg = client.messages.create(
-        model="claude-opus-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4096,
         system=system,
         messages=[{"role": "user", "content": user}],
