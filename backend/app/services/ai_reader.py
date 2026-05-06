@@ -26,53 +26,47 @@ HuggingFace models in use:
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import csv
 import json
+import logging
 import re
-from typing import Optional
+import threading
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
-# ── Sentence-transformer model (lazy-loaded, optional) ───────────────────────
-# Default: paraphrase-multilingual-mpnet-base-v2  (420 MB, better French accuracy)
-# Upgrade from MiniLM-L12-v2 — same multilingual support, noticeably better on
-# French construction vocabulary and abbreviation handling.
-# After running the training scripts, set in .env:
-#   HF_SENTENCE_MODEL=your_hf_username/devis-matcher
-# The fine-tuned model will be used automatically on next backend restart.
+# ── Sentence-transformer model (lazy-loaded, thread-safe singleton) ──────────
 _DEFAULT_SENTENCE_MODEL = "paraphrase-multilingual-mpnet-base-v2"
-_sentence_model = None   # lazy singleton — loaded on first matching call
+_sentence_model = None
+_sentence_model_lock = threading.Lock()
 
 
 def _get_sentence_model():
-    """
-    Load the sentence-transformer model once and cache it.
-    Priority:
-      1. HF_SENTENCE_MODEL env var  (your fine-tuned model on HuggingFace Hub)
-      2. Default multilingual MiniLM (pre-trained, works well without fine-tuning)
-    Falls back to rapidfuzz if sentence-transformers is not installed.
-    """
+    """Thread-safe lazy load of the sentence transformer. Returns None if unavailable."""
     global _sentence_model
     if _sentence_model is not None:
         return _sentence_model
-
-    # Check for fine-tuned model override
-    import os
-    model_name = os.getenv("HF_SENTENCE_MODEL", _DEFAULT_SENTENCE_MODEL)
-
-    try:
-        from sentence_transformers import SentenceTransformer
-        tag = "fine-tuned" if model_name != _DEFAULT_SENTENCE_MODEL else "pre-trained"
-        print(f"[AI Reader] Loading {tag} sentence transformer: '{model_name}' …")
-        _sentence_model = SentenceTransformer(model_name)
-        print(f"[AI Reader] Sentence transformer ready ✓  ({tag})")
-    except ImportError:
-        print("[AI Reader] sentence-transformers not installed — using rapidfuzz fallback")
-        print("[AI Reader] To install:  pip install sentence-transformers")
-        _sentence_model = None
-    except Exception as e:
-        print(f"[AI Reader] Sentence transformer load error: {e} — using rapidfuzz fallback")
-        _sentence_model = None
+    with _sentence_model_lock:
+        if _sentence_model is not None:  # double-check after acquiring lock
+            return _sentence_model
+        import os
+        model_name = os.getenv("HF_SENTENCE_MODEL", _DEFAULT_SENTENCE_MODEL)
+        try:
+            from sentence_transformers import SentenceTransformer
+            tag = "fine-tuned" if model_name != _DEFAULT_SENTENCE_MODEL else "pre-trained"
+            logger.info("Loading %s sentence transformer: '%s' …", tag, model_name)
+            _sentence_model = SentenceTransformer(model_name)
+            logger.info("Sentence transformer ready (%s)", tag)
+        except ImportError:
+            logger.warning("sentence-transformers not installed — using rapidfuzz fallback. "
+                           "Install with: pip install sentence-transformers")
+            _sentence_model = None
+        except Exception as e:
+            logger.warning("Sentence transformer load error: %s — using rapidfuzz fallback", e)
+            _sentence_model = None
     return _sentence_model
 
 
@@ -80,20 +74,22 @@ def _semantic_match(
     query: str,
     candidates: list[str],
     threshold: float = 0.55,
+    precomputed_embeddings: Any = None,
 ) -> Optional[tuple[str, float, int]]:
     """
     Find the best semantic match for `query` in `candidates`.
-    Uses paraphrase-multilingual-MiniLM-L12-v2 — works on French, English, mixed text.
+    If precomputed_embeddings is provided (tensor), skips encoding candidates.
     Returns (matched_text, score, index) or None if no match above threshold.
-    Falls back to rapidfuzz WRatio automatically if model not available.
+    Falls back to rapidfuzz WRatio if model unavailable.
     """
     model = _get_sentence_model()
 
     if model is not None:
         try:
             from sentence_transformers import util
-            q_emb  = model.encode(query,      convert_to_tensor=True)
-            c_embs = model.encode(candidates, convert_to_tensor=True)
+            q_emb = model.encode(query, convert_to_tensor=True)
+            c_embs = precomputed_embeddings if precomputed_embeddings is not None \
+                else model.encode(candidates, convert_to_tensor=True)
             scores = util.cos_sim(q_emb, c_embs)[0]
             best_idx   = int(scores.argmax())
             best_score = float(scores[best_idx])
@@ -101,7 +97,7 @@ def _semantic_match(
                 return candidates[best_idx], best_score, best_idx
             return None
         except Exception as e:
-            print(f"[AI Reader] semantic_match error: {e} — falling back to rapidfuzz")
+            logger.warning("semantic_match error: %s — falling back to rapidfuzz", e)
 
     # ── rapidfuzz fallback ────────────────────────────────────────────────────
     try:
@@ -109,7 +105,6 @@ def _semantic_match(
         result = process.extractOne(query, candidates, scorer=fuzz.WRatio, score_cutoff=55)
         if result:
             matched, score, idx = result
-            # Normalise score to 0-1 range so callers see a consistent scale
             return matched, score / 100.0, idx
     except Exception:
         pass
@@ -167,8 +162,8 @@ def _ocr_pdf(data: bytes) -> str:
         doc = fitz.open(stream=data, filetype="pdf")
         parts = []
         for page in doc:
-            # Render at 200 dpi
-            mat = fitz.Matrix(200 / 72, 200 / 72)
+            # Render at 300 dpi — improves OCR accuracy on small fonts
+            mat = fitz.Matrix(300 / 72, 300 / 72)
             pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             text = pytesseract.image_to_string(img, lang="fra+eng")
@@ -627,7 +622,7 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                     from pytesseract import Output
                     from PIL import Image
 
-                    mat = fitz.Matrix(200 / 72, 200 / 72)
+                    mat = fitz.Matrix(300 / 72, 300 / 72)
                     pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
                     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                     data = pytesseract.image_to_data(img, lang="fra+eng",
@@ -637,7 +632,7 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                          data["top"][i],
                          data["text"][i])
                         for i in range(len(data["text"]))
-                        if data["text"][i].strip() and int(data["conf"][i]) > 30
+                        if data["text"][i].strip() and int(data["conf"][i]) > 50
                     ]
                     rows = _group_words_by_row(words, y_tol=12)
                     all_rows.extend(_rows_to_structured(rows))
@@ -694,7 +689,7 @@ def _extract_vendor_tables_from_image(image_bytes: bytes) -> list[dict]:
              data["top"][i],
              data["text"][i])
             for i in range(len(data["text"]))
-            if data["text"][i].strip() and int(data["conf"][i]) > 30
+            if data["text"][i].strip() and int(data["conf"][i]) > 50
         ]
 
         rows = _group_words_by_row(words, y_tol=15)  # images need wider tolerance
@@ -753,13 +748,25 @@ def _smart_fill_from_tables(
     if not vendor_tables:
         return []
 
-    # Pre-index descriptions (used by both semantic and fuzzy matchers)
+    # Pre-index descriptions and batch-encode embeddings once per vendor
     vendor_desc_index: dict[str, list[str]] = {
         fname: [r.get("description", "") for r in rows]
         for fname, rows in vendor_tables.items()
     }
 
-    # Vendor-name → filename matching (still uses rapidfuzz — it's just name matching)
+    # Batch-encode all vendor descriptions once (avoids re-encoding on every query)
+    vendor_embeddings: dict[str, Any] = {}
+    model = _get_sentence_model()
+    if model is not None:
+        for fname, descs in vendor_desc_index.items():
+            if descs:
+                try:
+                    vendor_embeddings[fname] = model.encode(descs, convert_to_tensor=True)
+                    logger.info("Pre-encoded %d descriptions for '%s'", len(descs), fname)
+                except Exception as e:
+                    logger.warning("Embedding failed for '%s': %s", fname, e)
+
+    # Vendor-name → filename matching
     try:
         from rapidfuzz import fuzz as _fuzz
         _name_scorer = _fuzz.partial_ratio
@@ -768,7 +775,6 @@ def _smart_fill_from_tables(
 
     def _match_vendor_name(vendor_name: str) -> Optional[str]:
         if not _name_scorer:
-            # Naive contains check
             for fname in vendor_tables:
                 if vendor_name.lower() in fname.lower():
                     return fname
@@ -786,7 +792,11 @@ def _smart_fill_from_tables(
         if sheet_name == "error" or not isinstance(sheet_data, dict):
             continue
 
-        for cell in sheet_data.get("empty_cells", []):
+        empty_cells = sheet_data.get("empty_cells", [])
+        if len(empty_cells) == 300:
+            logger.warning("Sheet '%s' hit the 300-cell cap — some cells may not be filled", sheet_name)
+
+        for cell in empty_cells:
             vendor_name = cell.get("vendor", "")
             col_meaning = cell.get("col_meaning", "")
             item_desc   = cell.get("item", "")
@@ -799,19 +809,19 @@ def _smart_fill_from_tables(
             if not matched_fname:
                 continue
 
-            # ── Semantic / fuzzy description matching ──────────────────────────
             descriptions = vendor_desc_index[matched_fname]
-            result = _semantic_match(item_desc, descriptions, threshold=0.50)
+            precomputed  = vendor_embeddings.get(matched_fname)
+            result = _semantic_match(item_desc, descriptions, threshold=0.50,
+                                     precomputed_embeddings=precomputed)
             if not result:
                 continue
 
             matched_desc, match_score, match_idx = result
             matched_row = vendor_tables[matched_fname][match_idx]
 
-            print(f"[AI Reader] '{item_desc[:40]}' → '{matched_desc[:40]}' "
-                  f"(score={match_score:.2f}, vendor={matched_fname})")
+            logger.debug("'%s' → '%s' (score=%.2f, vendor=%s)",
+                         item_desc[:40], matched_desc[:40], match_score, matched_fname)
 
-            # ── Pick the right price column ────────────────────────────────────
             col_lower = col_meaning.lower().strip("(). ")
             value: Optional[str] = None
 
@@ -823,7 +833,6 @@ def _smart_fill_from_tables(
                 value = matched_row.get("qty")
 
             if value:
-                # Normalise: strip currency, convert French decimal comma
                 clean = re.sub(r'[€$£\s]', '', str(value))
                 clean = clean.replace(",", ".")
                 if clean.count(".") > 1:
@@ -831,8 +840,8 @@ def _smart_fill_from_tables(
                     clean = "".join(parts[:-1]).replace(".", "") + "." + parts[-1]
                 fills.append({"sheet": sheet_name, "ref": ref, "value": clean})
 
-    method = "sentence-transformer" if _get_sentence_model() else "rapidfuzz"
-    print(f"[AI Reader] smart fill → {len(fills)} instructions via {method}")
+    method = "sentence-transformer" if model else "rapidfuzz"
+    logger.info("smart fill → %d instructions via %s", len(fills), method)
     return fills
 
 
@@ -973,16 +982,16 @@ async def _call_gemini(api_key: str, system: str, user: str) -> str:
     return resp.choices[0].message.content or ""
 
 
+_PROVIDER_TIMEOUT = 60.0  # seconds per provider
+
+
 async def _call_groq(api_key: str, system: str, user: str) -> str:
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1",
+                    timeout=_PROVIDER_TIMEOUT)
     resp = client.chat.completions.create(
-        # llama-3.3-70b-versatile: 12,000 TPM — our prompt is now ~8,000 tokens
         model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         max_tokens=4096,
         temperature=0.1,
     )
@@ -991,7 +1000,7 @@ async def _call_groq(api_key: str, system: str, user: str) -> str:
 
 async def _call_claude(api_key: str, system: str, user: str) -> str:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=_PROVIDER_TIMEOUT)
     msg = client.messages.create(
         model="claude-opus-4-5",
         max_tokens=4096,
@@ -1002,22 +1011,13 @@ async def _call_claude(api_key: str, system: str, user: str) -> str:
 
 
 async def _call_huggingface(api_key: str, system: str, user: str) -> str:
-    """
-    HuggingFace Serverless Inference API — free tier, no credit card needed.
-    Uses Qwen2.5-72B-Instruct: strong reasoning, great JSON output, large context.
-    Get a free token at: huggingface.co → Settings → Access Tokens
-    """
+    """HuggingFace Serverless Inference — free tier, Qwen2.5-72B."""
     from huggingface_hub import InferenceClient
-    client = InferenceClient(
-        provider="hf-inference",
-        api_key=api_key,
-    )
+    client = InferenceClient(provider="hf-inference", api_key=api_key,
+                             timeout=_PROVIDER_TIMEOUT)
     response = client.chat.completions.create(
         model="Qwen/Qwen2.5-72B-Instruct",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         max_tokens=4096,
         temperature=0.1,
     )
@@ -1027,8 +1027,7 @@ async def _call_huggingface(api_key: str, system: str, user: str) -> str:
 async def _call_ai(gemini_key: str, groq_key: str, claude_key: str, system: str, user: str, hf_key: str = "") -> tuple[str, str]:
     """
     Call AI providers in priority order with automatic fallback.
-    Gemini (free, 1M ctx) → Groq (free, 32K ctx) → HuggingFace (free, 72B) → Anthropic (paid) → none
-    On quota/rate-limit errors from one provider, automatically tries the next.
+    Gemini → Groq → HuggingFace → Anthropic. Each has a 60s timeout.
     Returns (response_text, provider_name).
     """
     providers = []
@@ -1044,19 +1043,23 @@ async def _call_ai(gemini_key: str, groq_key: str, claude_key: str, system: str,
     last_error = None
     for name, caller in providers:
         try:
-            result = await caller()
+            result = await asyncio.wait_for(caller(), timeout=_PROVIDER_TIMEOUT)
             return result, name
+        except asyncio.TimeoutError:
+            last_error = f"{name}: timed out after {_PROVIDER_TIMEOUT}s"
+            logger.warning("Provider %s timed out — trying next", name)
+            continue
         except Exception as e:
             err_str = str(e).lower()
-            # Fall through on quota / rate-limit / auth errors so next provider is tried
-            if any(kw in err_str for kw in ("429", "quota", "rate", "resource_exhausted", "capacity", "overloaded", "401", "403")):
+            if any(kw in err_str for kw in ("429", "quota", "rate", "resource_exhausted",
+                                             "capacity", "overloaded", "401", "403")):
                 last_error = f"{name}: {e}"
+                logger.warning("Provider %s quota/auth error — trying next: %s", name, e)
                 continue
-            # Re-raise unexpected errors (network failure, bad key format, etc.)
             raise
 
     if last_error:
-        raise Exception(f"All AI providers failed or hit quota. Last error — {last_error}")
+        raise Exception(f"All AI providers failed. Last error — {last_error}")
     return "", "none"
 
 
@@ -1101,17 +1104,25 @@ async def fill_excel_template(
             # Parse JSON fills from AI response
             llm_fills: list[dict] = []
             try:
-                cleaned = re.sub(r"```(?:json)?|```", "", ai_response).strip()
-                llm_fills = json.loads(cleaned)
-                if not isinstance(llm_fills, list):
-                    llm_fills = []
+                cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", ai_response).strip()
+                parsed = json.loads(cleaned)
+                llm_fills = parsed if isinstance(parsed, list) else []
             except (json.JSONDecodeError, ValueError):
-                m = re.search(r'\[.*\]', ai_response, re.DOTALL)
-                if m:
-                    try:
-                        llm_fills = json.loads(m.group(0))
-                    except Exception:
-                        llm_fills = []
+                # Find outermost JSON array by bracket matching (avoids greedy regex)
+                start = ai_response.find("[")
+                if start != -1:
+                    depth = 0
+                    for i, ch in enumerate(ai_response[start:], start):
+                        if ch == "[":
+                            depth += 1
+                        elif ch == "]":
+                            depth -= 1
+                            if depth == 0:
+                                try:
+                                    llm_fills = json.loads(ai_response[start : i + 1])
+                                except Exception:
+                                    llm_fills = []
+                                break
 
             print(f"[AI Reader] LLM ({provider}) returned {len(llm_fills)} fill instructions")
             for f in llm_fills[:20]:

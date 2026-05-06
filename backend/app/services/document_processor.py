@@ -1,15 +1,16 @@
 """
 Document processing pipeline:
   1. Extract text from PDF/Excel/text file
-  2. Send to Claude claude-sonnet-4-6 for BOQ extraction
+  2. Send to Claude for BOQ extraction
   3. Generate Excel with openpyxl
   4. Update Document record with results
 """
 
+import io
 import json
+import logging
 import os
 import re
-import zlib
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -21,41 +22,46 @@ from openpyxl.utils import get_column_letter
 from app.database import SessionLocal
 from app.models.document import Document, DocumentStatus
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Text extraction helpers
 # ---------------------------------------------------------------------------
 
 def _extract_pdf_text(path: str) -> str:
-    """Minimal PDF text extractor — no cryptography dependency."""
+    """Extract text from PDF using pdfplumber → pymupdf fallback."""
     with open(path, "rb") as f:
-        raw = f.read()
+        data = f.read()
 
-    texts: List[str] = []
+    # Strategy 1: pdfplumber — best for tables and structured PDFs
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            parts = [page.extract_text() or "" for page in pdf.pages]
+        text = "\n".join(p for p in parts if p.strip())
+        if len(text) >= 100:
+            return text[:15000]
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("pdfplumber failed for %s: %s", path, e)
 
-    # Locate all stream...endstream blocks
-    for m in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.DOTALL):
-        chunk = m.group(1)
-        # Try FlateDecode (zlib) decompression
-        try:
-            chunk = zlib.decompress(chunk)
-        except Exception:
-            pass
-        # Extract BT...ET blocks and pull out parenthesised text strings
-        for bt in re.finditer(rb"BT(.*?)ET", chunk, re.DOTALL):
-            for tj in re.finditer(rb"\((.*?)\)", bt.group(1)):
-                t = tj.group(1).decode("latin-1", errors="replace")
-                t = t.strip()
-                if len(t) > 1:
-                    texts.append(t)
+    # Strategy 2: pymupdf — handles most text-based PDFs
+    try:
+        import fitz
+        doc = fitz.open(stream=data, filetype="pdf")
+        parts = [page.get_text("text") for page in doc]
+        text = "\n".join(p for p in parts if p.strip())
+        if len(text) >= 100:
+            return text[:15000]
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("pymupdf failed for %s: %s", path, e)
 
-    text = " ".join(texts)
-    # Also scan raw bytes for printable ASCII runs as a fallback
-    if len(text) < 100:
-        printable = re.findall(rb"[ -~]{4,}", raw)
-        text = " ".join(p.decode("ascii", errors="replace") for p in printable)
-
-    return text[:15000]  # cap to avoid huge token counts
+    logger.error("All PDF extractors failed for %s — document may be scanned or encrypted", path)
+    return "[PDF extraction failed — document may be scanned or encrypted. Try uploading as image.]"
 
 
 def _extract_excel_text(path: str) -> str:
@@ -138,19 +144,44 @@ FALLBACK_RESULT: Dict[str, Any] = {
 }
 
 
+def _parse_json_response(raw: str) -> Dict[str, Any]:
+    """Parse JSON from LLM response, handling markdown fences and surrounding text."""
+    cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
+    try:
+        result = json.loads(cleaned)
+        if isinstance(result, dict):
+            return result
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # Find outermost { } by bracket matching
+    start = cleaned.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found in response")
+    depth = 0
+    for i, ch in enumerate(cleaned[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(cleaned[start : i + 1])
+    raise ValueError("Incomplete JSON object in response")
+
+
 def call_claude(text: str, api_key: str) -> Dict[str, Any]:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
         messages=[{"role": "user", "content": CLAUDE_PROMPT.format(text=text)}],
     )
     raw = message.content[0].text.strip()
-    # Strip markdown fences if Claude added them
-    raw = re.sub(r"^```json\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    result = _parse_json_response(raw)
+    # Clamp confidence to valid range
+    conf = result.get("overall_confidence", 0.5)
+    result["overall_confidence"] = max(0.0, min(1.0, float(conf) if conf else 0.5))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +200,17 @@ NUM_FORMAT   = '#,##0.000'
 
 HEADERS = ["Section", "Description", "Specification", "Unit", "Qty", "Rate (₹)", "GST%", "Amount (₹)"]
 COL_WIDTHS = [20, 42, 32, 8, 10, 16, 7, 16]
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Convert value to float safely, returning default on failure."""
+    if value is None:
+        return default
+    try:
+        cleaned = str(value).replace(",", "").replace(" ", "").strip()
+        return float(cleaned) if cleaned else default
+    except (ValueError, TypeError):
+        return default
 
 
 def generate_excel(data: Dict[str, Any], out_path: str) -> None:
@@ -231,9 +273,9 @@ def generate_excel(data: Dict[str, Any], out_path: str) -> None:
             if section not in section_rows:
                 section_rows[section] = []
 
-        qty    = float(item.get("quantity", 0) or 0)
-        rate   = float(item.get("rate", 0) or 0)
-        gst    = float(item.get("gst_percent", 18) or 18)
+        qty    = _safe_float(item.get("quantity"), 0.0)
+        rate   = _safe_float(item.get("rate"), 0.0)
+        gst    = _safe_float(item.get("gst_percent"), 18.0)
         amount = qty * rate  # base amount without GST (matches civil industry convention)
 
         values = [
@@ -308,14 +350,13 @@ def process_document(document_id: str, api_key: str) -> None:
         # 1. Extract text
         text = extract_text(doc.file_path, doc.original_name)
 
-        # 2. Claude extraction (fall back to demo data if no API key)
-        if api_key:
-            try:
-                extracted = call_claude(text, api_key)
-            except Exception as e:
-                extracted = {**FALLBACK_RESULT, "_claude_error": str(e)}
-        else:
-            extracted = FALLBACK_RESULT.copy()
+        # 2. Claude extraction
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not configured. "
+                "Set it in your .env file and restart the backend."
+            )
+        extracted = call_claude(text, api_key)
 
         # 3. Generate Excel
         excel_filename = f"{document_id}.xlsx"
