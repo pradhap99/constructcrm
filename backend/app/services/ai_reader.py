@@ -10,15 +10,19 @@ Extraction pipeline (in priority order):
      Image        → Pillow + pytesseract image_to_data
 
   2. MATCHING  (description ↔ template item)
-     Primary  → sentence-transformers  paraphrase-multilingual-mpnet-base-v2
-                semantic cosine similarity  (HuggingFace, ~420 MB, CPU-friendly)
+     Primary  → HuggingFace Space (Pradhap/devis-matcher, camembert-large)
+                Embeddings computed in a separate Space container, the Render
+                worker only does the cosine similarity. Set EMBEDDING_API_URL
+                to the Space's base URL.
      Fallback → rapidfuzz WRatio  (pure string, always available)
 
   3. LLM FALLBACK  (fires only when smart-match covers < 40 % of cells)
      Gemini → Groq → HuggingFace Qwen2.5-72B → Anthropic Claude
 
 HuggingFace models in use:
-  • paraphrase-multilingual-mpnet-base-v2  – semantic matching (upgraded from MiniLM)
+  • Pradhap/devis-matcher                  – sentence embeddings (hosted in a
+                                              separate HF Space, called via
+                                              EMBEDDING_API_URL)
   • Qwen/Qwen2.5-72B-Instruct              – LLM fallback via HF Inference API
   (future) microsoft/table-transformer-*   – ML table detection in images
   (future) camembert-ner-*                 – French NER for price/entity extraction
@@ -38,36 +42,89 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-# ── Sentence-transformer model (lazy-loaded, thread-safe singleton) ──────────
-_DEFAULT_SENTENCE_MODEL = "paraphrase-multilingual-mpnet-base-v2"
-_sentence_model = None
-_sentence_model_lock = threading.Lock()
+# ── Embedding endpoint (HF Space, thread-safe singleton) ─────────────────────
+# We POST batches of strings to a separate HF Space (free CPU container, 16 GB
+# RAM) which loads `Pradhap/devis-matcher` once and exposes a Gradio API. The
+# Render worker stays under its 512 MB cap and the fine-tuned camembert-large
+# accuracy is preserved end-to-end.
+#
+# Tried-and-rejected alternatives:
+#   - Local SentenceTransformer load → OOM-kills Render free tier
+#   - HF Inference API feature-extraction → returns un-pooled embeddings for
+#     multilingual sentence-transformer models, giving meaningless cos sim
+#     (0.38 for case-different identical text). Fine-tuned models are
+#     additionally not routable on the free serverless tier even with HF Pro.
+_embedding_endpoint: Optional[str] = None
+_embedding_endpoint_lock = threading.Lock()
 
 
-def _get_sentence_model():
-    """Thread-safe lazy load of the sentence transformer. Returns None if unavailable."""
-    global _sentence_model
-    if _sentence_model is not None:
-        return _sentence_model
-    with _sentence_model_lock:
-        if _sentence_model is not None:  # double-check after acquiring lock
-            return _sentence_model
+def _get_embedding_endpoint() -> Optional[str]:
+    """Return the HF Space encode URL (e.g. https://x.hf.space/api/encode/), or None."""
+    global _embedding_endpoint
+    if _embedding_endpoint is not None:
+        return _embedding_endpoint or None
+    with _embedding_endpoint_lock:
+        if _embedding_endpoint is not None:
+            return _embedding_endpoint or None
         import os
-        model_name = os.getenv("HF_SENTENCE_MODEL", _DEFAULT_SENTENCE_MODEL)
-        try:
-            from sentence_transformers import SentenceTransformer
-            tag = "fine-tuned" if model_name != _DEFAULT_SENTENCE_MODEL else "pre-trained"
-            logger.info("Loading %s sentence transformer: '%s' …", tag, model_name)
-            _sentence_model = SentenceTransformer(model_name)
-            logger.info("Sentence transformer ready (%s)", tag)
-        except ImportError:
-            logger.warning("sentence-transformers not installed — using rapidfuzz fallback. "
-                           "Install with: pip install sentence-transformers")
-            _sentence_model = None
-        except Exception as e:
-            logger.warning("Sentence transformer load error: %s — using rapidfuzz fallback", e)
-            _sentence_model = None
-    return _sentence_model
+        base = os.getenv("EMBEDDING_API_URL", "").strip().rstrip("/")
+        if not base:
+            logger.warning("No EMBEDDING_API_URL set — embeddings disabled, using rapidfuzz")
+            _embedding_endpoint = ""  # cache the negative
+            return None
+        # If the user already passed the full path, respect it; otherwise append /api/encode/
+        if base.endswith("/api/encode") or base.endswith("/api/encode/"):
+            url = base if base.endswith("/") else base + "/"
+        else:
+            url = base + "/api/encode/"
+        _embedding_endpoint = url
+        logger.info("Embedding endpoint: %s", url)
+    return _embedding_endpoint
+
+
+def _encode(texts: list[str]) -> Any:
+    """POST a batch of strings to the HF Space and return embeddings as (N, dim) array.
+
+    Returns None if the endpoint isn't configured or the call fails — callers
+    should treat that as a signal to fall back to rapidfuzz.
+    """
+    if not texts:
+        return None
+    endpoint = _get_embedding_endpoint()
+    if endpoint is None:
+        return None
+    try:
+        import httpx
+        import numpy as np
+        # Gradio's auto-API expects {"data": [<arg1>, <arg2>, …]} where each arg
+        # corresponds to one input component. Our Space has a single JSON input
+        # so we send a list of texts as the first (and only) data slot.
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(endpoint, json={"data": [list(texts)]})
+            r.raise_for_status()
+            payload = r.json()
+        out = (payload.get("data") or [None])[0]
+        if isinstance(out, dict) and "error" in out:
+            logger.warning("Embedding Space returned error: %s", out["error"])
+            return None
+        if not out:
+            return None
+        arr = np.asarray(out, dtype=np.float32)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+        return arr
+    except Exception as e:
+        logger.warning("Embedding Space call failed (%d texts): %s", len(texts), e)
+        return None
+
+
+def _cos_sim_to_query(query_emb: Any, candidate_embs: Any) -> Any:
+    """Cosine similarity between a (dim,) query and an (N, dim) candidate matrix → (N,)."""
+    import numpy as np
+    q = query_emb.reshape(-1)
+    qn = q / (np.linalg.norm(q) + 1e-12)
+    cn = candidate_embs / (np.linalg.norm(candidate_embs, axis=1, keepdims=True) + 1e-12)
+    return cn @ qn
 
 
 def _semantic_match(
@@ -78,26 +135,27 @@ def _semantic_match(
 ) -> Optional[tuple[str, float, int]]:
     """
     Find the best semantic match for `query` in `candidates`.
-    If precomputed_embeddings is provided (tensor), skips encoding candidates.
+    If precomputed_embeddings is provided (numpy array), skips re-encoding candidates.
     Returns (matched_text, score, index) or None if no match above threshold.
-    Falls back to rapidfuzz WRatio if model unavailable.
+    Falls back to rapidfuzz WRatio if HF Inference is unavailable.
     """
-    model = _get_sentence_model()
+    candidate_embs = precomputed_embeddings
+    if candidate_embs is None and _get_embedding_endpoint() is not None:
+        candidate_embs = _encode(candidates)
 
-    if model is not None:
-        try:
-            from sentence_transformers import util
-            q_emb = model.encode(query, convert_to_tensor=True)
-            c_embs = precomputed_embeddings if precomputed_embeddings is not None \
-                else model.encode(candidates, convert_to_tensor=True)
-            scores = util.cos_sim(q_emb, c_embs)[0]
-            best_idx   = int(scores.argmax())
-            best_score = float(scores[best_idx])
-            if best_score >= threshold:
-                return candidates[best_idx], best_score, best_idx
-            return None
-        except Exception as e:
-            logger.warning("semantic_match error: %s — falling back to rapidfuzz", e)
+    if candidate_embs is not None:
+        q_arr = _encode([query])
+        if q_arr is not None and len(q_arr) > 0:
+            try:
+                import numpy as np
+                scores = _cos_sim_to_query(q_arr[0], candidate_embs)
+                best_idx = int(np.argmax(scores))
+                best_score = float(scores[best_idx])
+                if best_score >= threshold:
+                    return candidates[best_idx], best_score, best_idx
+                return None
+            except Exception as e:
+                logger.warning("semantic_match error: %s — falling back to rapidfuzz", e)
 
     # ── rapidfuzz fallback ────────────────────────────────────────────────────
     try:
@@ -725,9 +783,12 @@ def _smart_fill_from_tables(
     Primary fill path — no LLM needed.
 
     Matching strategy (in order):
-      1. sentence-transformers paraphrase-multilingual-mpnet-base-v2
-         Semantic cosine similarity — handles French synonyms / paraphrasing.
-      2. rapidfuzz WRatio  (fallback when model not installed or score too low)
+      1. HuggingFace Space hosting Pradhap/devis-matcher (camembert-large,
+         fine-tuned on French construction documents). Set EMBEDDING_API_URL
+         to the Space's base URL (e.g. https://x-devis-matcher-api.hf.space).
+         Embeddings computed remotely so the Render worker stays under its
+         512 MB cap with full fine-tune accuracy preserved.
+      2. rapidfuzz WRatio  (fallback when EMBEDDING_API_URL unset / Space unreachable)
 
     Returns fill instructions: [{"sheet": ..., "ref": ..., "value": ...}, ...]
     """
@@ -754,17 +815,16 @@ def _smart_fill_from_tables(
         for fname, rows in vendor_tables.items()
     }
 
-    # Batch-encode all vendor descriptions once (avoids re-encoding on every query)
+    # Batch-encode all vendor descriptions once (one Space call per vendor)
     vendor_embeddings: dict[str, Any] = {}
-    model = _get_sentence_model()
-    if model is not None:
+    has_embedding_api = _get_embedding_endpoint() is not None
+    if has_embedding_api:
         for fname, descs in vendor_desc_index.items():
             if descs:
-                try:
-                    vendor_embeddings[fname] = model.encode(descs, convert_to_tensor=True)
+                arr = _encode(descs)
+                if arr is not None:
+                    vendor_embeddings[fname] = arr
                     logger.info("Pre-encoded %d descriptions for '%s'", len(descs), fname)
-                except Exception as e:
-                    logger.warning("Embedding failed for '%s': %s", fname, e)
 
     # Vendor-name → filename matching
     try:
@@ -840,7 +900,7 @@ def _smart_fill_from_tables(
                     clean = "".join(parts[:-1]).replace(".", "") + "." + parts[-1]
                 fills.append({"sheet": sheet_name, "ref": ref, "value": clean})
 
-    method = "sentence-transformer" if model else "rapidfuzz"
+    method = "hf-space" if has_embedding_api else "rapidfuzz"
     logger.info("smart fill → %d instructions via %s", len(fills), method)
     return fills
 

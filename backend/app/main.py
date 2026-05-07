@@ -12,15 +12,11 @@ async def lifespan(app: FastAPI):
     # Creates any tables that don't yet exist (safe to run on every startup)
     Base.metadata.create_all(bind=engine)
 
-    # Pre-load the sentence-transformer model on startup so the first user
-    # request doesn't trigger a ~60 second cold download from HuggingFace.
-    # If HF_SENTENCE_MODEL is set, loads your fine-tuned model.
-    # If not set, loads the default paraphrase-multilingual-mpnet-base-v2.
-    try:
-        from app.services.ai_reader import _get_sentence_model
-        _get_sentence_model()
-    except Exception as e:
-        print(f"[Startup] Sentence model preload skipped: {e}")
+    # Embeddings now go through a separate HF Space hosting Pradhap/devis-matcher
+    # (see app.services.ai_reader and the EMBEDDING_API_URL env var). No model
+    # to preload — the worker stays lean and won't OOM on Render's free tier.
+    # The first /ai-reader/fill call after Space cold start pays a one-time
+    # 30-45s wake-up; daily keep-alive cron prevents that.
 
     yield
 
