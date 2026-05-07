@@ -59,7 +59,12 @@ _embedding_endpoint_lock = threading.Lock()
 
 
 def _get_embedding_endpoint() -> Optional[str]:
-    """Return the HF Space encode URL (e.g. https://x.hf.space/api/encode/), or None."""
+    """Return the Space base URL (e.g. https://x.hf.space) with no trailing slash, or None.
+
+    The actual call paths (POST /gradio_api/call/encode, GET /gradio_api/call/encode/<id>)
+    are appended in _encode. We accept either a bare base URL or one that already
+    includes /gradio_api/... — we strip the suffix and keep only the origin.
+    """
     global _embedding_endpoint
     if _embedding_endpoint is not None:
         return _embedding_endpoint or None
@@ -67,49 +72,77 @@ def _get_embedding_endpoint() -> Optional[str]:
         if _embedding_endpoint is not None:
             return _embedding_endpoint or None
         import os
-        base = os.getenv("EMBEDDING_API_URL", "").strip().rstrip("/")
-        if not base:
+        raw = os.getenv("EMBEDDING_API_URL", "").strip().rstrip("/")
+        if not raw:
             logger.warning("No EMBEDDING_API_URL set — embeddings disabled, using rapidfuzz")
             _embedding_endpoint = ""  # cache the negative
             return None
-        # If the user already passed the full path, respect it; otherwise append /api/encode/
-        if base.endswith("/api/encode") or base.endswith("/api/encode/"):
-            url = base if base.endswith("/") else base + "/"
-        else:
-            url = base + "/api/encode/"
-        _embedding_endpoint = url
-        logger.info("Embedding endpoint: %s", url)
+        # Normalise to bare origin: strip /gradio_api/... or /api/... if present
+        for suffix in ("/gradio_api/call/encode", "/gradio_api/call/encode/",
+                       "/gradio_api/encode", "/gradio_api/encode/",
+                       "/api/encode", "/api/encode/"):
+            if raw.endswith(suffix):
+                raw = raw[: -len(suffix)]
+                break
+        _embedding_endpoint = raw.rstrip("/")
+        logger.info("Embedding Space base URL: %s", _embedding_endpoint)
     return _embedding_endpoint
 
 
 def _encode(texts: list[str]) -> Any:
-    """POST a batch of strings to the HF Space and return embeddings as (N, dim) array.
+    """POST a batch of strings to the HF Space and return embeddings as (N, dim) numpy array.
+
+    Uses Gradio 5's call-then-stream pattern:
+      1. POST /gradio_api/call/encode with {"data": [[text, …]]} → {"event_id": "…"}
+      2. GET /gradio_api/call/encode/<event_id> → SSE stream containing
+         "event: complete\\ndata: <json>" once the function finishes.
 
     Returns None if the endpoint isn't configured or the call fails — callers
-    should treat that as a signal to fall back to rapidfuzz.
+    treat that as a signal to fall back to rapidfuzz.
     """
     if not texts:
         return None
-    endpoint = _get_embedding_endpoint()
-    if endpoint is None:
+    base = _get_embedding_endpoint()
+    if not base:
         return None
     try:
         import httpx
+        import json as _json
         import numpy as np
-        # Gradio's auto-API expects {"data": [<arg1>, <arg2>, …]} where each arg
-        # corresponds to one input component. Our Space has a single JSON input
-        # so we send a list of texts as the first (and only) data slot.
-        with httpx.Client(timeout=30.0) as client:
-            r = client.post(endpoint, json={"data": [list(texts)]})
-            r.raise_for_status()
-            payload = r.json()
-        out = (payload.get("data") or [None])[0]
-        if isinstance(out, dict) and "error" in out:
-            logger.warning("Embedding Space returned error: %s", out["error"])
+        with httpx.Client(timeout=120.0) as client:
+            r1 = client.post(f"{base}/gradio_api/call/encode",
+                              json={"data": [list(texts)]})
+            r1.raise_for_status()
+            event_id = r1.json().get("event_id")
+            if not event_id:
+                logger.warning("Embedding Space POST returned no event_id: %s", r1.text[:200])
+                return None
+            # Stream the result
+            embs_payload = None
+            with client.stream("GET", f"{base}/gradio_api/call/encode/{event_id}",
+                               timeout=120.0) as r2:
+                r2.raise_for_status()
+                current_event = None
+                for line in r2.iter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("event:"):
+                        current_event = line[len("event:"):].strip()
+                    elif line.startswith("data:") and current_event == "complete":
+                        embs_payload = _json.loads(line[len("data:"):].strip())
+                        break
+                    elif line.startswith("data:") and current_event == "error":
+                        logger.warning("Embedding Space error event: %s",
+                                       line[len("data:"):].strip()[:200])
+                        return None
+        if not embs_payload:
             return None
-        if not out:
+        # Function returns list[list[float]]; SSE wraps it as [<function_output>]
+        embs = embs_payload[0] if isinstance(embs_payload, list) else embs_payload
+        if isinstance(embs, dict) and "error" in embs:
+            logger.warning("Embedding Space returned error in payload: %s", embs["error"])
             return None
-        arr = np.asarray(out, dtype=np.float32)
+        arr = np.asarray(embs, dtype=np.float32)
         if arr.ndim == 1:
             arr = arr.reshape(1, -1)
         return arr
