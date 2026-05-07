@@ -73,7 +73,7 @@ def _get_sentence_model():
 def _semantic_match(
     query: str,
     candidates: list[str],
-    threshold: float = 0.55,
+    threshold: float = 0.65,
     precomputed_embeddings: Any = None,
 ) -> Optional[tuple[str, float, int]]:
     """
