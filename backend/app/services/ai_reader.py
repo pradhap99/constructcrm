@@ -1401,7 +1401,7 @@ async def fill_excel_template(
             fills = merged_fills
             provider = f"smart-match+{provider}"
         elif not fills:
-            return template_bytes, "none", "No AI key configured and smart match found 0 fills — template returned unfilled."
+            return template_bytes, "none", "No AI key configured and smart match found 0 fills - template returned unfilled."
 
     # Log what the AI returned so we can diagnose issues
     print(f"[AI Reader] total {len(fills)} fill instructions via '{provider}'")
