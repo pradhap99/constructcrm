@@ -461,12 +461,12 @@ def extract_excel_structure(data: bytes) -> dict:
         return {"error": str(e)}
 
 
-def fill_excel_with_values(template_bytes: bytes, fills: list[dict]) -> bytes:
+def fill_excel_with_values(template_bytes: bytes, fills: list[dict]) -> tuple[bytes, int, int, int]:
     """
     Takes the original Excel template and writes AI-suggested values into it.
     fills = [{"sheet": "Sheet1", "ref": "B5", "value": "123.00"}, ...]
     IMPORTANT: Never overwrites cells that already have a value — only fills blanks.
-    Returns the filled Excel as bytes.
+    Returns (filled_excel_bytes, written, skipped_existing, skipped_na).
     """
     import openpyxl
     import logging
@@ -518,7 +518,7 @@ def fill_excel_with_values(template_bytes: bytes, fills: list[dict]) -> bytes:
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    return output.read()
+    return output.read(), written, skipped_existing, skipped_na
 
 
 def fill_docx_with_text(template_bytes: bytes, filled_text: str) -> bytes:
@@ -1234,8 +1234,11 @@ async def fill_excel_template(
     for f in fills[:20]:
         print(f"  → {f}")
 
-    filled_bytes = fill_excel_with_values(template_bytes, fills)
-    summary = f"Filled {len(fills)} cells from {len(vendor_docs)} vendor document(s) via {provider}"
+    filled_bytes, written, skipped_existing, skipped_na = fill_excel_with_values(template_bytes, fills)
+    summary = (
+        f"Filled {written} of {len(fills)} cells from {len(vendor_docs)} vendor document(s) "
+        f"via {provider} (skipped {skipped_existing} pre-filled, {skipped_na} N/A)"
+    )
     return filled_bytes, provider, summary
 
 
