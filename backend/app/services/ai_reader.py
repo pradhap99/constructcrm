@@ -763,7 +763,7 @@ def _extract_vendor_tables_via_vision(pdf_bytes: bytes) -> list[dict]:
                        for b in page_b64]
             content.append({"type": "text", "text": _VISION_PROMPT})
             resp = client.chat.completions.create(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 messages=[{"role": "user", "content": content}],
                 max_tokens=8192,
                 temperature=0.1,
