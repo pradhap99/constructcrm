@@ -851,9 +851,10 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
         import fitz  # pymupdf
 
         all_rows = []
+        scanned_pages = []  # pages with no embedded text — handed off to vision
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-        for page in doc:
+        for page_idx, page in enumerate(doc):
             word_list = page.get_text("words")  # (x0,y0,x1,y1,word,blk,ln,wn)
             if word_list and len(word_list) > 10:
                 words = [((w[0] + w[2]) / 2, (w[1] + w[3]) / 2, w[4]) for w in word_list]
@@ -861,12 +862,28 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                 page_rows = _rows_to_structured(rows)
                 all_rows.extend(page_rows)
             else:
-                # ── Strategy 3: scanned page → pytesseract OCR ───────────────
-                try:
-                    import pytesseract
-                    from pytesseract import Output
-                    from PIL import Image
+                scanned_pages.append(page_idx)
 
+        # If any page is scanned, OCR + the row heuristic produces noisy output
+        # whose unit_price / total columns are usually empty — sending all that
+        # noise downstream means the LLM stuffs "N/A" into every fill instruction.
+        # Hand the whole document to vision instead, which returns clean prices.
+        if scanned_pages:
+            vision_rows = _extract_vendor_tables_via_vision(pdf_bytes)
+            if vision_rows:
+                print(f"[AI Reader] PDF (vision; {len(scanned_pages)} scanned pages) "
+                      f"→ {len(vision_rows)} structured rows")
+                return vision_rows
+
+            # ── Strategy 3: pytesseract OCR (last resort if vision unavailable) ─
+            print("[AI Reader] Vision unavailable, falling back to pytesseract OCR")
+            try:
+                import pytesseract
+                from pytesseract import Output
+                from PIL import Image
+
+                for page_idx in scanned_pages:
+                    page = doc.load_page(page_idx)
                     mat = fitz.Matrix(300 / 72, 300 / 72)
                     pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
                     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
@@ -881,16 +898,8 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                     ]
                     rows = _group_words_by_row(words, y_tol=12)
                     all_rows.extend(_rows_to_structured(rows))
-                except Exception as ocr_err:
-                    print(f"[AI Reader] page OCR error: {ocr_err}")
-
-        # ── Strategy 4: Claude vision (scanned PDFs where 1-3 came up dry) ───
-        if len(all_rows) < 3:
-            vision_rows = _extract_vendor_tables_via_vision(pdf_bytes)
-            if vision_rows:
-                # Vision is the most reliable for scans — let it override the
-                # noisy partial output that strategies 1-3 may have produced.
-                all_rows = vision_rows
+            except Exception as ocr_err:
+                print(f"[AI Reader] OCR fallback error: {ocr_err}")
 
         print(f"[AI Reader] PDF → {len(all_rows)} structured rows")
         return all_rows
