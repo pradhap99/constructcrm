@@ -1292,16 +1292,20 @@ async def _call_huggingface(api_key: str, system: str, user: str) -> str:
 async def _call_ai(gemini_key: str, groq_key: str, claude_key: str, system: str, user: str, hf_key: str = "") -> tuple[str, str]:
     """
     Call AI providers in priority order with automatic fallback.
-    Gemini → Groq → HuggingFace → Anthropic. Each has a 60s timeout.
-    Returns (response_text, provider_name).
+    Gemini → Groq → Anthropic. Each has a 60s timeout.
+    Returns (response_text, provider_name). On total failure returns ("", "none")
+    so the caller can fall through to smart-match's existing fills rather than
+    crashing the request.
+
+    HuggingFace's free serverless inference no longer routes Qwen2.5-72B for our
+    account ("Model not supported by provider hf-inference"); dropped from the
+    chain. hf_key kept in the signature for backward compat — it's ignored.
     """
     providers = []
     if gemini_key:
         providers.append(("gemini", lambda: _call_gemini(gemini_key, system, user)))
     if groq_key:
         providers.append(("groq", lambda: _call_groq(groq_key, system, user)))
-    if hf_key:
-        providers.append(("huggingface", lambda: _call_huggingface(hf_key, system, user)))
     if claude_key:
         providers.append(("anthropic", lambda: _call_claude(claude_key, system, user)))
 
@@ -1315,16 +1319,14 @@ async def _call_ai(gemini_key: str, groq_key: str, claude_key: str, system: str,
             logger.warning("Provider %s timed out — trying next", name)
             continue
         except Exception as e:
-            err_str = str(e).lower()
-            if any(kw in err_str for kw in ("429", "quota", "rate", "resource_exhausted",
-                                             "capacity", "overloaded", "401", "403")):
-                last_error = f"{name}: {e}"
-                logger.warning("Provider %s quota/auth error — trying next: %s", name, e)
-                continue
-            raise
+            # Always continue to next provider — never re-raise from inside the
+            # loop. A single failing provider must not crash the whole request.
+            last_error = f"{name}: {e}"
+            logger.warning("Provider %s errored — trying next: %s", name, e)
+            continue
 
     if last_error:
-        raise Exception(f"All AI providers failed. Last error — {last_error}")
+        logger.warning("All AI providers failed. Last error — %s", last_error)
     return "", "none"
 
 
