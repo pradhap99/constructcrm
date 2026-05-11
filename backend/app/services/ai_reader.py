@@ -776,25 +776,32 @@ def _extract_vendor_tables_via_vision(pdf_bytes: bytes) -> list[dict]:
             print(f"[AI Reader] Vision gemini error: {e}")
 
     # ── Attempt 3: Groq vision (per-page; multimodal Llama 4 Scout) ───────────
+    # Aggressive timeouts + no retries so a rate-limited Groq doesn't stall the
+    # whole request for 10 minutes (OpenAI SDK auto-retries 429s by default).
+    # If a page errors, keep going — partial results beat zero results.
     if groq_key:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1",
-                            timeout=120.0)
+                            timeout=30.0, max_retries=0)
             all_rows: list[dict] = []
             for b in page_b64:
-                resp = client.chat.completions.create(
-                    model="meta-llama/llama-4-scout-17b-16e-instruct",
-                    messages=[{"role": "user", "content": [
-                        {"type": "image_url",
-                         "image_url": {"url": f"data:image/png;base64,{b}"}},
-                        {"type": "text", "text": _VISION_PROMPT},
-                    ]}],
-                    max_tokens=4096,
-                    temperature=0.1,
-                )
-                page_rows = _parse_vision_json(resp.choices[0].message.content or "")
-                all_rows.extend(page_rows)
+                try:
+                    resp = client.chat.completions.create(
+                        model="meta-llama/llama-4-scout-17b-16e-instruct",
+                        messages=[{"role": "user", "content": [
+                            {"type": "image_url",
+                             "image_url": {"url": f"data:image/png;base64,{b}"}},
+                            {"type": "text", "text": _VISION_PROMPT},
+                        ]}],
+                        max_tokens=4096,
+                        temperature=0.1,
+                    )
+                    page_rows = _parse_vision_json(resp.choices[0].message.content or "")
+                    all_rows.extend(page_rows)
+                except Exception as page_err:
+                    print(f"[AI Reader] Vision (groq) page failed: {page_err}")
+                    # Continue with remaining pages rather than abort
             if all_rows:
                 print(f"[AI Reader] Vision (groq) → {len(all_rows)} rows, {page_count} pages")
                 return all_rows
