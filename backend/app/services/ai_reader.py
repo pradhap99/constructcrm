@@ -650,6 +650,161 @@ def _rows_to_structured(rows: list[list[str]]) -> list[dict]:
 
 # ── Per-format extractors ─────────────────────────────────────────────────────
 
+_VISION_PROMPT = (
+    "Extract every line item from this French construction document (devis/quote).\n\n"
+    "Return ONLY a JSON array, one object per line item. No markdown, no prose:\n"
+    '[{"description":"...","qty":"...","unit":"...","unit_price":"...","total":"..."}, ...]\n\n'
+    "Rules:\n"
+    "- description: the work-item label (e.g. 'PEINTURE SUR MURS')\n"
+    "- qty: quantity number only (e.g. '10', '2.5')\n"
+    "- unit: unit of measure (e.g. 'm²', 'ml', 'u', 'ens', 'forf')\n"
+    "- unit_price: unit price number only, EUR (e.g. '7.70'). French decimal commas\n"
+    "  → convert to dots. Strip €, spaces, and the thousand separators.\n"
+    "- total: total/montant number for that line (e.g. '77.00'). Same formatting rules.\n"
+    "- Skip section headers and subtotals — only actual priced line items.\n"
+    "- Use \"\" (empty string) for missing values, never 'N/A'.\n"
+    "- Read prices aggressively even from cramped or low-contrast scans; if a number\n"
+    "  is visible next to a description, capture it.\n"
+)
+
+
+def _parse_vision_json(text: str) -> list[dict]:
+    """Parse a JSON array out of a vision-LLM response. Tolerates code fences + stray prose."""
+    if not text:
+        return []
+    text = re.sub(r"```(?:json)?\s*|\s*```", "", text.strip()).strip()
+    try:
+        rows = json.loads(text)
+    except json.JSONDecodeError:
+        rows = []
+        start = text.find("[")
+        if start != -1:
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == "[":
+                    depth += 1
+                elif ch == "]":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            rows = json.loads(text[start : i + 1])
+                        except Exception:
+                            pass
+                        break
+    return [r for r in rows if isinstance(r, dict) and r.get("description")]
+
+
+def _extract_vendor_tables_via_vision(pdf_bytes: bytes) -> list[dict]:
+    """High-quality fallback for scanned/image-only PDFs: send page renders
+    to a multimodal LLM and parse a JSON array of line items.
+
+    Tries Anthropic → Gemini → Groq in priority order — whichever provider
+    key is set on the worker wins. Returns [] if no key is set, every
+    provider errors, or no JSON parses.
+    """
+    import os
+    anth_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not (anth_key or gemini_key or groq_key):
+        print("[AI Reader] Vision skipped — no AI provider keys set")
+        return []
+
+    # Render PDF pages once, share across provider attempts
+    try:
+        import base64
+        import fitz  # pymupdf
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page_count = min(doc.page_count, 12)
+        page_b64: list[str] = []
+        for i in range(page_count):
+            page = doc.load_page(i)
+            mat = fitz.Matrix(150 / 72, 150 / 72)
+            pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+            page_b64.append(base64.b64encode(pix.tobytes("png")).decode())
+        if not page_b64:
+            return []
+    except Exception as e:
+        print(f"[AI Reader] Vision render error: {e}")
+        return []
+
+    # ── Attempt 1: Anthropic (best at structured extraction) ──────────────────
+    if anth_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=anth_key, timeout=120.0)
+            content: list[dict] = [
+                {"type": "image",
+                 "source": {"type": "base64", "media_type": "image/png", "data": b}}
+                for b in page_b64
+            ]
+            content.append({"type": "text", "text": _VISION_PROMPT})
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=8192,
+                messages=[{"role": "user", "content": content}],
+            )
+            rows = _parse_vision_json(msg.content[0].text)
+            if rows:
+                print(f"[AI Reader] Vision (anthropic) → {len(rows)} rows, {page_count} pages")
+                return rows
+        except Exception as e:
+            print(f"[AI Reader] Vision anthropic error: {e}")
+
+    # ── Attempt 2: Gemini (OpenAI-compatible endpoint, supports multi-image) ──
+    if gemini_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=gemini_key,
+                            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                            timeout=120.0)
+            content = [{"type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b}"}}
+                       for b in page_b64]
+            content.append({"type": "text", "text": _VISION_PROMPT})
+            resp = client.chat.completions.create(
+                model="gemini-2.0-flash",
+                messages=[{"role": "user", "content": content}],
+                max_tokens=8192,
+                temperature=0.1,
+            )
+            rows = _parse_vision_json(resp.choices[0].message.content or "")
+            if rows:
+                print(f"[AI Reader] Vision (gemini) → {len(rows)} rows, {page_count} pages")
+                return rows
+        except Exception as e:
+            print(f"[AI Reader] Vision gemini error: {e}")
+
+    # ── Attempt 3: Groq vision (per-page; multimodal Llama 4 Scout) ───────────
+    if groq_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1",
+                            timeout=120.0)
+            all_rows: list[dict] = []
+            for b in page_b64:
+                resp = client.chat.completions.create(
+                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    messages=[{"role": "user", "content": [
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:image/png;base64,{b}"}},
+                        {"type": "text", "text": _VISION_PROMPT},
+                    ]}],
+                    max_tokens=4096,
+                    temperature=0.1,
+                )
+                page_rows = _parse_vision_json(resp.choices[0].message.content or "")
+                all_rows.extend(page_rows)
+            if all_rows:
+                print(f"[AI Reader] Vision (groq) → {len(all_rows)} rows, {page_count} pages")
+                return all_rows
+        except Exception as e:
+            print(f"[AI Reader] Vision groq error: {e}")
+
+    print("[AI Reader] Vision returned no rows from any provider")
+    return []
+
+
 def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
     Extract structured rows from a vendor PDF.
@@ -659,10 +814,9 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                        Detects cell boundaries using line geometry, produces clean rows.
       2. pymupdf word-coordinate grouping  — best for text-based PDFs without borders.
                        Groups word (x,y) coordinates into rows by Y proximity.
-      3. pytesseract OCR  — last resort for scanned / image-only pages.
-
-    pdfplumber is tried first; if it finds no tables (borderless PDF) we fall through
-    to the pymupdf path which handles unstructured text layouts.
+      3. pytesseract OCR  — fast fallback for scanned pages with clear layout.
+      4. Claude vision   — high-quality fallback when 1-3 produce no rows;
+                           reads page images directly and returns structured JSON.
     """
     # ── Strategy 1: pdfplumber (bordered tables) ──────────────────────────────
     try:
@@ -730,11 +884,20 @@ def _extract_vendor_tables_from_pdf(pdf_bytes: bytes) -> list[dict]:
                 except Exception as ocr_err:
                     print(f"[AI Reader] page OCR error: {ocr_err}")
 
-        print(f"[AI Reader] PDF (pymupdf) → {len(all_rows)} structured rows")
+        # ── Strategy 4: Claude vision (scanned PDFs where 1-3 came up dry) ───
+        if len(all_rows) < 3:
+            vision_rows = _extract_vendor_tables_via_vision(pdf_bytes)
+            if vision_rows:
+                # Vision is the most reliable for scans — let it override the
+                # noisy partial output that strategies 1-3 may have produced.
+                all_rows = vision_rows
+
+        print(f"[AI Reader] PDF → {len(all_rows)} structured rows")
         return all_rows
     except Exception as e:
         print(f"[AI Reader] PDF table extraction error: {e}")
-        return []
+        # Last-ditch: try vision before giving up entirely
+        return _extract_vendor_tables_via_vision(pdf_bytes)
 
 
 def _extract_vendor_tables_from_docx(docx_bytes: bytes) -> list[dict]:
