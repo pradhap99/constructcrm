@@ -36,7 +36,8 @@ export default function LoginPage() {
 
   const doLogin = async (email: string, password: string) => {
     const loginRes = await auth.login(email, password)
-    const accessToken = loginRes.data.access_token
+    // Backend returns camelCase `accessToken`; older snake_case shape kept as fallback
+    const accessToken = loginRes.data.accessToken ?? loginRes.data.access_token
     localStorage.setItem('auth_token', accessToken)
 
     const meRes = await auth.me()
