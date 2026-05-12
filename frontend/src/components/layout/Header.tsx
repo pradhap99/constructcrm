@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sun, Moon, Bell, Search, User, Menu } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { Bell, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NotificationsPanel } from './NotificationsPanel'
+import { CommandPalette, useCommandPaletteHotkey } from './CommandPalette'
+import { UserMenu } from './UserMenu'
 import { notifications as notifApi } from '@/lib/api'
 import type { Notification } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -53,13 +54,17 @@ const POLL_INTERVAL_MS = 30_000
 
 export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const pathname = usePathname()
-  const { theme, setTheme } = useTheme()
   const [panelOpen, setPanelOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [notifs, setNotifs] = useState<Notification[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [user, setUser] = useState<{ full_name: string; email: string; role: string } | null>(null)
+  const [isMac, setIsMac] = useState(false)
+
+  useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []))
 
   useEffect(() => {
+    setIsMac(typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform))
     const stored = localStorage.getItem('auth_user')
     if (stored) {
       try { setUser(JSON.parse(stored)) } catch { /* ignore */ }
@@ -105,11 +110,12 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
     BASE_TITLE_MAP[segments[0]] ??
     'ConstructCRM'
 
+  const hasCritical = notifs.some((n) => !n.is_seen && n.severity === 'critical')
+
   return (
     <>
       <header className="flex items-center justify-between h-16 px-4 sm:px-6 border-b bg-background">
-        <div className="flex items-center gap-3">
-          {/* Hamburger — mobile only */}
+        <div className="flex items-center gap-3 min-w-0">
           <Button
             variant="ghost"
             size="icon"
@@ -119,41 +125,46 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div>
-          <h1 className="text-lg font-semibold text-foreground">{title}</h1>
-          <p className="text-xs text-muted-foreground hidden sm:block">
-            Home {segments.map((s, i) => (
-              <span key={i}> › <span className="capitalize">{s.replace(/-/g, ' ')}</span></span>
-            ))}
-          </p>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground truncate">{title}</h1>
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
+              Home {segments.map((s, i) => (
+                <span key={i}> › <span className="capitalize">{s.replace(/-/g, ' ')}</span></span>
+              ))}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              placeholder="Search..."
-              className="pl-9 pr-4 py-1.5 text-sm border rounded-lg bg-muted focus:outline-none focus:ring-2 focus:ring-ring w-48"
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="hidden md:flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 text-sm border rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground transition-colors w-56 text-left"
+            aria-label="Open command palette"
+          >
+            <Search className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 truncate">Search pages…</span>
+            <kbd className="text-[10px] font-medium border rounded px-1 py-0.5 bg-background">
+              {isMac ? '⌘K' : 'Ctrl K'}
+            </kbd>
+          </button>
 
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="md:hidden"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Search"
           >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
+            <Search className="h-4 w-4" />
           </Button>
 
-          {/* Bell with unread badge */}
           <Button
             variant="ghost"
             size="icon"
             className="relative"
             onClick={() => setPanelOpen(true)}
+            aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
@@ -162,9 +173,7 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
                   'absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1',
                   'flex items-center justify-center',
                   'rounded-full text-[10px] font-bold text-white',
-                  unreadCount > 0 && notifs.some((n) => !n.is_seen && n.severity === 'critical')
-                    ? 'bg-red-500'
-                    : 'bg-indigo-500'
+                  hasCritical ? 'bg-red-500' : 'bg-indigo-500'
                 )}
               >
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -172,17 +181,11 @@ export function Header({ onMenuToggle }: { onMenuToggle?: () => void }) {
             )}
           </Button>
 
-          <div className="flex items-center gap-2 ml-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center">
-              <User className="w-4 h-4 text-white" />
-            </div>
-            <div className="hidden md:block text-sm">
-              <p className="font-medium leading-none">{user?.full_name ?? 'User'}</p>
-              <p className="text-xs text-muted-foreground">{user?.email ?? ''}</p>
-            </div>
-          </div>
+          <UserMenu user={user} />
         </div>
       </header>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
       <NotificationsPanel
         open={panelOpen}
