@@ -1,23 +1,25 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
-# Next.js build output
+# Next.js
 .next/
 out/
 
-# Production build
+# Build artifacts
 build/
 dist/
+*.tsbuildinfo
 
-# Environment files
+# Env
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
 # Logs
+*.log
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
@@ -25,17 +27,11 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# TypeScript
-*.tsbuildinfo
-
-# Python bytecode
-__pycache__/
-*.pyc
-*.pyo
-
 # Editor
 .vscode/
 .idea/
 *.swp
 *.swo
-backend/model_output/
+
+# Drizzle migrations cache
+.drizzle/
