@@ -1,82 +1,42 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import {
-  LayoutDashboard, Brain, Building2, Target, ClipboardList,
-  FileSearch, Users, ShoppingCart, Package, Receipt,
-  CalendarDays, BarChart3, FileCheck, GitBranch, Wallet,
-  TrendingUp, HardHat, ChevronLeft, ChevronRight,
-  LogOut, Layers, ChevronDown,
-} from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { HardHat, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { NAV_GROUPS } from '@/lib/nav'
+import { useEffect, useState } from 'react'
 
-type NavItem = { href: string; label: string; icon: React.ElementType; badge?: string; badgeClass?: string }
-type NavGroup = { label: string; items: NavItem[] }
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'Overview',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      {
-        href: '/ai-reader', label: 'AI Draft Reader', icon: Brain,
-        badge: '★ AI', badgeClass: 'bg-amber-100 text-amber-700',
-      },
-      { href: '/analytics', label: 'Analytics', icon: TrendingUp },
-    ],
-  },
-  {
-    label: 'Sales',
-    items: [
-      { href: '/projects', label: 'Projects', icon: Building2 },
-      { href: '/leads', label: 'Leads', icon: Target },
-    ],
-  },
-  {
-    label: 'Procurement',
-    items: [
-      { href: '/indents', label: 'Indents / PR', icon: ClipboardList },
-      { href: '/rfq', label: 'RFQ', icon: FileSearch },
-      { href: '/vendors', label: 'Vendors', icon: Users },
-      { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
-      { href: '/grn', label: 'GRN', icon: Package },
-    ],
-  },
-  {
-    label: 'Site & Quality',
-    items: [
-      { href: '/dpr', label: 'DPR', icon: CalendarDays },
-      { href: '/boq', label: 'BOQ', icon: BarChart3 },
-      { href: '/materials', label: 'Materials', icon: Layers },
-      { href: '/submittals', label: 'Submittals', icon: FileCheck },
-      { href: '/change-orders', label: 'Change Orders', icon: GitBranch },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      { href: '/invoices', label: 'Invoices', icon: Receipt },
-      { href: '/billing', label: 'Billing', icon: Wallet },
-    ],
-  },
-]
+const COLLAPSED_KEY = 'sidebar_collapsed'
+const GROUPS_KEY = 'sidebar_collapsed_groups'
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
-  const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1')
+      const raw = localStorage.getItem(GROUPS_KEY)
+      if (raw) setCollapsedGroups(JSON.parse(raw))
+    } catch { /* ignore */ }
+    setHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try { localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0') } catch { /* ignore */ }
+  }, [collapsed, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try { localStorage.setItem(GROUPS_KEY, JSON.stringify(collapsedGroups)) } catch { /* ignore */ }
+  }, [collapsedGroups, hydrated])
 
   const toggleGroup = (label: string) =>
     setCollapsedGroups(p => ({ ...p, [label]: !p[label] }))
-
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_user')
-    router.push('/login')
-  }
 
   return (
     <aside
@@ -108,7 +68,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
           return (
             <div key={group.label} className="mb-1">
-              {/* Group header */}
               {!collapsed && (
                 <button
                   onClick={() => toggleGroup(group.label)}
@@ -127,7 +86,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 </button>
               )}
 
-              {/* Group items */}
               {(!isGroupCollapsed || collapsed) && group.items.map((item) => {
                 const Icon = item.icon
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -170,25 +128,15 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="absolute -right-3 top-16 w-6 h-6 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-white hover:bg-indigo-600 transition-colors z-10 shadow"
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
 
-      {/* User + Logout */}
+      {/* Footer */}
       <div className="border-t border-slate-700/60 px-2 py-3">
-        <button
-          onClick={handleLogout}
-          className={cn(
-            'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-all',
-            'text-slate-400 hover:bg-red-900/30 hover:text-red-400'
-          )}
-          title={collapsed ? 'Logout' : undefined}
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          {!collapsed && <span className="truncate">Logout</span>}
-        </button>
         {!collapsed && (
-          <p className="text-[10px] text-slate-600 text-center pt-1.5">v0.1.0</p>
+          <p className="text-[10px] text-slate-600 text-center">v0.1.0</p>
         )}
       </div>
     </aside>

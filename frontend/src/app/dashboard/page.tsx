@@ -12,9 +12,9 @@ import {
 } from 'recharts'
 import {
   IndianRupee, ShoppingCart, FileText, Building2,
-  Target, TrendingUp, AlertCircle, Plus, ArrowRight,
-  Loader2,
+  Target, TrendingUp, TrendingDown, AlertCircle, Plus, ArrowRight,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ''}`} />
@@ -50,7 +50,25 @@ export default function DashboardPage() {
 
   const projectList: any[] = (projectsData as any)?.items ?? (Array.isArray(projectsData) ? projectsData : [])
 
-  const kpis = [
+  // Derive month-over-month spend delta from the budget-vs-actual series
+  const monthlyDelta = (() => {
+    const series = (budgetActual as any[]).filter(r => typeof r?.actual === 'number')
+    if (series.length < 2) return null
+    const curr = Number(series[series.length - 1].actual)
+    const prev = Number(series[series.length - 2].actual)
+    if (!prev) return null
+    return ((curr - prev) / prev) * 100
+  })()
+
+  const kpis: Array<{
+    label: string
+    value: string | null
+    icon: any
+    color: string
+    bg: string
+    delta?: number | null
+    deltaInvert?: boolean
+  }> = [
     {
       label: 'Total Budget',
       value: statsLoading ? null : formatCurrencyCr(stats?.totalBudget ?? 0),
@@ -77,6 +95,9 @@ export default function DashboardPage() {
       label: 'Monthly Spend',
       value: statsLoading ? null : formatCurrencyCr(stats?.monthlySpend ?? 0),
       icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50',
+      delta: monthlyDelta,
+      // Rising spend is not necessarily "good" — show as neutral/warning if up vs prior month
+      deltaInvert: true,
     },
     {
       label: 'Open Leads',
@@ -102,8 +123,26 @@ export default function DashboardPage() {
           return (
             <Card key={kpi.label} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className={`inline-flex p-2 rounded-lg ${kpi.bg} mb-3`}>
-                  <Icon className={`w-4 h-4 ${kpi.color}`} />
+                <div className="flex items-start justify-between mb-3">
+                  <div className={`inline-flex p-2 rounded-lg ${kpi.bg}`}>
+                    <Icon className={`w-4 h-4 ${kpi.color}`} />
+                  </div>
+                  {typeof kpi.delta === 'number' && (
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                        kpi.delta === 0
+                          ? 'bg-slate-100 text-slate-600'
+                          : (kpi.delta > 0) !== Boolean(kpi.deltaInvert)
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                      )}
+                      title="vs previous month"
+                    >
+                      {kpi.delta > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                      {Math.abs(kpi.delta).toFixed(0)}%
+                    </span>
+                  )}
                 </div>
                 {kpi.value === null
                   ? <Skeleton className="h-6 w-16 mb-1" />
