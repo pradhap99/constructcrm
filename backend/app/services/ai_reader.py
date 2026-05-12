@@ -35,6 +35,7 @@ import io
 import csv
 import json
 import logging
+import os
 import re
 import threading
 from typing import Any, Optional
@@ -1014,6 +1015,7 @@ def _smart_fill_from_tables(
         rows = _extract_vendor_tables(filename, raw)
         if rows:
             vendor_tables[filename] = rows
+            doc["_cached_rows"] = rows  # reused by LLM fallback to avoid double vision call
             print(f"[AI Reader] vendor '{filename}' → {len(rows)} rows extracted")
         else:
             print(f"[AI Reader] vendor '{filename}' → 0 rows (LLM fallback will handle)")
@@ -1255,6 +1257,7 @@ async def _call_gemini(api_key: str, system: str, user: str) -> str:
 
 
 _PROVIDER_TIMEOUT = 60.0  # seconds per provider
+_OLLAMA_TIMEOUT = 240.0   # local CPU inference can be slow on first call
 
 
 async def _call_groq(api_key: str, system: str, user: str) -> str:
@@ -1280,6 +1283,19 @@ async def _call_claude(api_key: str, system: str, user: str) -> str:
         messages=[{"role": "user", "content": user}],
     )
     return msg.content[0].text
+
+
+async def _call_ollama(model: str, system: str, user: str) -> str:
+    from openai import OpenAI
+    base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    client = OpenAI(api_key="ollama", base_url=base, timeout=_OLLAMA_TIMEOUT)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=4096,
+        temperature=0.1,
+    )
+    return resp.choices[0].message.content or ""
 
 
 async def _call_huggingface(api_key: str, system: str, user: str) -> str:
@@ -1315,14 +1331,19 @@ async def _call_ai(gemini_key: str, groq_key: str, claude_key: str, system: str,
         providers.append(("groq", lambda: _call_groq(groq_key, system, user)))
     if claude_key:
         providers.append(("anthropic", lambda: _call_claude(claude_key, system, user)))
+    # Local Ollama as last resort — slow on CPU but works offline
+    ollama_model = os.getenv("OLLAMA_MODEL", "").strip()
+    if ollama_model:
+        providers.append((f"ollama({ollama_model})", lambda: _call_ollama(ollama_model, system, user)))
 
     last_error = None
     for name, caller in providers:
+        timeout = _OLLAMA_TIMEOUT if name.startswith("ollama") else _PROVIDER_TIMEOUT
         try:
-            result = await asyncio.wait_for(caller(), timeout=_PROVIDER_TIMEOUT)
+            result = await asyncio.wait_for(caller(), timeout=timeout)
             return result, name
         except asyncio.TimeoutError:
-            last_error = f"{name}: timed out after {_PROVIDER_TIMEOUT}s"
+            last_error = f"{name}: timed out after {timeout}s"
             logger.warning("Provider %s timed out — trying next", name)
             continue
         except Exception as e:
@@ -1370,7 +1391,26 @@ async def fill_excel_template(
     # ── Fallback path: LLM if smart fill covered < 40% of empty cells ─────────
     if fill_ratio < 0.40:
         print(f"[AI Reader] smart fill covered {fill_ratio:.0%} of cells — falling back to LLM")
-        system, user = _build_excel_prompt(vendor_docs, structure, extra_instructions, len(vendor_docs))
+        # For scanned PDFs, d['text'] is empty; re-extract via vision and inject
+        # the structured rows as readable text so the LLM actually has data to work with.
+        enriched_docs = []
+        for doc in vendor_docs:
+            txt = doc.get("text", "").strip()
+            text_is_useless = not txt or txt.startswith("[OCR error") or len(txt) < 100
+            if text_is_useless and doc.get("raw_bytes"):
+                rows = doc.get("_cached_rows") or _extract_vendor_tables(doc["filename"], doc["raw_bytes"])
+                if rows:
+                    row_lines = "\n".join(
+                        f"{r.get('description','')} | qty={r.get('quantity','')} | unit_price={r.get('unit_price','')} | total={r.get('total','')}"
+                        for r in rows
+                    )
+                    enriched_docs.append({**doc, "text": row_lines})
+                    print(f"[AI Reader] LLM fallback: enriched '{doc['filename']}' with {len(rows)} vision rows")
+                else:
+                    enriched_docs.append(doc)
+            else:
+                enriched_docs.append(doc)
+        system, user = _build_excel_prompt(enriched_docs, structure, extra_instructions, len(enriched_docs))
 
         ai_response, provider = await _call_ai(gemini_key, groq_key, claude_key, system, user, hf_key=hf_key)
 

@@ -15,9 +15,12 @@ class Settings(BaseSettings):
     HF_API_KEY: str = ""          # Free — get at huggingface.co/settings/tokens
     HF_SENTENCE_MODEL: str = ""  # After training: set to "your_username/devis-matcher"
     UPLOAD_DIR: str = "uploads"
+    OLLAMA_MODEL: str = ""        # Local Ollama model (e.g. "qwen2.5-coder:latest") for offline LLM fallback
+    OLLAMA_BASE_URL: str = ""     # Defaults to http://localhost:11434/v1 in ai_reader if blank
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

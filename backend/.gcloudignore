@@ -17,5 +17,8 @@ env/
 uploads/
 *.jsonl
 scripts/ai_reader_train/training_pairs.jsonl
+scripts/ai_reader_train/model_output*/
+scripts/ai_reader_train/ddc_fr_raw/
+scripts/ai_reader_train/checkpoints/
 *.log
 .DS_Store
