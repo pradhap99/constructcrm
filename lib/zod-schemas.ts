@@ -32,6 +32,53 @@ export const ClientCreateSchema = z.object({
 })
 export type ClientCreateInput = z.infer<typeof ClientCreateSchema>
 
+// ─── PROJECTS ────────────────────────────────────────────────────────────────
+
+export const PROJECT_STATUSES = [
+  'AWARDED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+  'COMPLETED',
+  'CANCELLED',
+] as const
+export const ProjectStatusSchema = z.enum(PROJECT_STATUSES)
+export type ProjectStatus = z.infer<typeof ProjectStatusSchema>
+
+export const VARIATION_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as const
+export const VariationStatusSchema = z.enum(VARIATION_STATUSES)
+export type VariationStatus = z.infer<typeof VariationStatusSchema>
+
+export const ProjectVariationSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().trim().min(1, 'Variation description is required').max(400),
+  value: z.number().finite(),
+  status: VariationStatusSchema,
+  date: z.string().min(1), // ISO YYYY-MM-DD
+})
+export type ProjectVariation = z.infer<typeof ProjectVariationSchema>
+
+export const ProjectCreateSchema = z
+  .object({
+    clientId: z.string().uuid('Pick a client'),
+    name: z.string().trim().min(2, 'Project name must be at least 2 characters').max(160),
+    code: z.string().trim().min(1, 'Project code is required').max(40),
+    contractValue: z
+      .number({ invalid_type_error: 'Contract value must be a number' })
+      .nonnegative()
+      .max(9_999_999_999_999.99),
+    startDate: z.string().min(1, 'Start date is required'),
+    endDate: z.string().min(1, 'End date is required'),
+    status: ProjectStatusSchema.default('IN_PROGRESS'),
+    siteAddress: z.string().trim().max(500).optional(),
+    description: z.string().trim().max(2000).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .refine((v) => v.endDate >= v.startDate, {
+    message: 'End date must be after start date',
+    path: ['endDate'],
+  })
+export type ProjectCreateInput = z.infer<typeof ProjectCreateSchema>
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 export const LoginInputSchema = z.object({

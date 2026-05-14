@@ -2,10 +2,13 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Building2, Target, Receipt } from 'lucide-react'
 import { getClientById } from '@/actions/clients'
+import { listProjectsForTenant, listClientsForPicker } from '@/actions/projects'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { ContactActionButtons } from '@/components/clients/contact-action-buttons'
 import { ContactsEditor } from '@/components/clients/contacts-editor'
 import { NotesEditor } from '@/components/clients/notes-editor'
+import { ProjectCard } from '@/components/projects/project-card'
+import { CreateProjectButton } from '@/components/projects/create-project-modal'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate } from '@/lib/date'
 
@@ -19,6 +22,11 @@ export default async function ClientDetailPage({
   const { id } = await Promise.resolve(params)
   const client = await getClientById(id)
   if (!client) notFound()
+
+  const [projects, allClients] = await Promise.all([
+    listProjectsForTenant({ clientId: client.id }),
+    listClientsForPicker(),
+  ])
 
   return (
     <div className="p-6 md:p-10">
@@ -72,11 +80,31 @@ export default async function ClientDetailPage({
         </TabsList>
 
         <TabsContent value="projects">
-          <TabPlaceholder
-            icon={Building2}
-            title="Projects land in Phase 3"
-            body="Once Phase 3 ships, this tab will list every project tied to this client, with timeline progress and contract value."
-          />
+          {projects.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card p-10 text-center">
+              <Building2 className="h-8 w-8 text-muted-foreground/40" />
+              <h3 className="text-sm font-medium">No projects under this client yet</h3>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Add the first project — bills and variations will then live under it.
+              </p>
+              <CreateProjectButton clients={allClients} presetClientId={client.id} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {projects.length} project{projects.length === 1 ? '' : 's'} under{' '}
+                  {client.name}
+                </p>
+                <CreateProjectButton clients={allClients} presetClientId={client.id} />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {projects.map((p) => (
+                  <ProjectCard key={p.id} project={p} />
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="tenders">
           <TabPlaceholder
