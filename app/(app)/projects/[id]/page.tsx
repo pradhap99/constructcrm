@@ -2,11 +2,18 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Receipt, GitBranch, NotebookPen } from 'lucide-react'
 import { getProjectById } from '@/actions/projects'
+import {
+  listBillsForTenant,
+  listProjectsForBillPicker,
+  getTenantBillDefaults,
+} from '@/actions/bills'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TimelineBar } from '@/components/projects/timeline-bar'
 import { ProjectStatusChanger } from '@/components/projects/project-status-changer'
 import { VariationsEditor } from '@/components/projects/variations-editor'
 import { ProjectNotesEditor } from '@/components/projects/project-notes-editor'
+import { BillRow } from '@/components/bills/bill-row'
+import { CreateBillButton } from '@/components/bills/bill-form'
 import { formatINR } from '@/lib/currency'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +26,12 @@ export default async function ProjectDetailPage({
   const { id } = await Promise.resolve(params)
   const project = await getProjectById(id)
   if (!project) notFound()
+
+  const [bills, allProjects, billDefaults] = await Promise.all([
+    listBillsForTenant({ projectId: project.id }),
+    listProjectsForBillPicker(),
+    getTenantBillDefaults(),
+  ])
 
   return (
     <div className="p-6 md:p-10">
@@ -95,14 +108,39 @@ export default async function ProjectDetailPage({
         </TabsList>
 
         <TabsContent value="bills">
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-10 text-center">
-            <Receipt className="h-8 w-8 text-muted-foreground/40" />
-            <h3 className="text-sm font-medium">Bills land in Phase 5</h3>
-            <p className="max-w-sm text-xs text-muted-foreground">
-              The RA-bill module (live tax math, status workflow, WhatsApp share) ships with
-              Phase 5. Once it lands this tab shows every bill on this project.
-            </p>
-          </div>
+          {bills.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card p-10 text-center">
+              <Receipt className="h-8 w-8 text-muted-foreground/40" />
+              <h3 className="text-sm font-medium">No bills on this project yet</h3>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Raise the first RA bill — net auto-calculates with GST, TDS, retention, mob
+                recovery, and other deductions.
+              </p>
+              <CreateBillButton
+                projects={allProjects}
+                defaults={billDefaults}
+                presetProjectId={project.id}
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {bills.length} bill{bills.length === 1 ? '' : 's'} on this project
+                </p>
+                <CreateBillButton
+                  projects={allProjects}
+                  defaults={billDefaults}
+                  presetProjectId={project.id}
+                />
+              </div>
+              <div className="space-y-2">
+                {bills.map((b) => (
+                  <BillRow key={b.id} bill={b} />
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="variations">

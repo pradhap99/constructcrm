@@ -79,6 +79,35 @@ export const ProjectCreateSchema = z
   })
 export type ProjectCreateInput = z.infer<typeof ProjectCreateSchema>
 
+// ─── BILLS ───────────────────────────────────────────────────────────────────
+
+export const BILL_STATUSES = ['DRAFT', 'SUBMITTED', 'CERTIFIED', 'PAID', 'DISPUTED'] as const
+export const BillStatusSchema = z.enum(BILL_STATUSES)
+export type BillStatus = z.infer<typeof BillStatusSchema>
+
+export const BillCreateSchema = z.object({
+  projectId: z.string().uuid('Pick a project'),
+  billNumber: z.string().trim().min(1, 'Bill number is required').max(40),
+  billDate: z.string().min(1, 'Bill date is required'),
+  grossAmount: z
+    .number({ invalid_type_error: 'Gross must be a number' })
+    .nonnegative()
+    .max(9_999_999_999_999.99),
+  gstRate: z.number().min(0).max(50),
+  tdsRate: z.number().min(0).max(50),
+  retentionRate: z.number().min(0).max(50),
+  mobAdvanceRecovery: z.number().nonnegative().default(0),
+  otherDeductions: z.number().nonnegative().default(0),
+  attachmentUrl: z
+    .string()
+    .trim()
+    .url('Must be a valid URL')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  notes: z.string().trim().max(2000).optional(),
+})
+export type BillCreateInput = z.infer<typeof BillCreateSchema>
+
 // ─── TENDERS ─────────────────────────────────────────────────────────────────
 
 export const TENDER_STATUSES = [

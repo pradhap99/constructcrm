@@ -4,7 +4,14 @@ import { ArrowLeft, Building2, Target, Receipt } from 'lucide-react'
 import { getClientById } from '@/actions/clients'
 import { listProjectsForTenant, listClientsForPicker } from '@/actions/projects'
 import { listTendersForTenant } from '@/actions/tenders'
+import {
+  listBillsForTenant,
+  listProjectsForBillPicker,
+  getTenantBillDefaults,
+} from '@/actions/bills'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
+import { BillRow } from '@/components/bills/bill-row'
+import { CreateBillButton } from '@/components/bills/bill-form'
 import { ContactActionButtons } from '@/components/clients/contact-action-buttons'
 import { ContactsEditor } from '@/components/clients/contacts-editor'
 import { NotesEditor } from '@/components/clients/notes-editor'
@@ -26,10 +33,13 @@ export default async function ClientDetailPage({
   const client = await getClientById(id)
   if (!client) notFound()
 
-  const [projects, allClients, tenders] = await Promise.all([
+  const [projects, allClients, tenders, bills, allProjects, billDefaults] = await Promise.all([
     listProjectsForTenant({ clientId: client.id }),
     listClientsForPicker(),
     listTendersForTenant({ clientId: client.id }),
+    listBillsForTenant({ clientId: client.id }),
+    listProjectsForBillPicker(),
+    getTenantBillDefaults(),
   ])
 
   return (
@@ -137,11 +147,34 @@ export default async function ClientDetailPage({
           )}
         </TabsContent>
         <TabsContent value="bills">
-          <TabPlaceholder
-            icon={Receipt}
-            title="Bills land in Phase 5"
-            body="Once the bill module ships, this tab rolls up every RA bill across every project tied to this client."
-          />
+          {bills.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card p-10 text-center">
+              <Receipt className="h-8 w-8 text-muted-foreground/40" />
+              <h3 className="text-sm font-medium">No bills under this client yet</h3>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Bills are raised against projects. The first one shows up here once a project
+                under {client.name} has a bill.
+              </p>
+              {allProjects.length > 0 && (
+                <CreateBillButton projects={allProjects} defaults={billDefaults} />
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {bills.length} bill{bills.length === 1 ? '' : 's'} across {client.name}
+                  &rsquo;s projects
+                </p>
+                <CreateBillButton projects={allProjects} defaults={billDefaults} />
+              </div>
+              <div className="space-y-2">
+                {bills.map((b) => (
+                  <BillRow key={b.id} bill={b} />
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -149,24 +182,6 @@ export default async function ClientDetailPage({
         <ContactsEditor clientId={client.id} initial={client.contacts ?? []} />
         <NotesEditor clientId={client.id} initialNotes={client.notes} />
       </section>
-    </div>
-  )
-}
-
-function TabPlaceholder({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: typeof Building2
-  title: string
-  body: string
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-10 text-center">
-      <Icon className="h-8 w-8 text-muted-foreground/40" />
-      <h3 className="text-sm font-medium">{title}</h3>
-      <p className="max-w-sm text-xs text-muted-foreground">{body}</p>
     </div>
   )
 }
