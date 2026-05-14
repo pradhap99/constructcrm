@@ -79,6 +79,62 @@ export const ProjectCreateSchema = z
   })
 export type ProjectCreateInput = z.infer<typeof ProjectCreateSchema>
 
+// ─── TENDERS ─────────────────────────────────────────────────────────────────
+
+export const TENDER_STATUSES = [
+  'EOI',
+  'BIDDING',
+  'SUBMITTED',
+  'EVALUATION',
+  'WON',
+  'LOST',
+] as const
+export const TenderStatusSchema = z.enum(TENDER_STATUSES)
+export type TenderStatus = z.infer<typeof TenderStatusSchema>
+
+/** The "forward" status path. LOST is a side-branch from any non-terminal state. */
+export const TENDER_FORWARD_PATH: Record<TenderStatus, TenderStatus | null> = {
+  EOI: 'BIDDING',
+  BIDDING: 'SUBMITTED',
+  SUBMITTED: 'EVALUATION',
+  EVALUATION: 'WON',
+  WON: null,
+  LOST: null,
+}
+
+export const TenderCreateSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Tender name must be at least 2 characters').max(160),
+    type: ClientTypeSchema,
+    clientId: z
+      .string()
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    estimatedValue: z
+      .number({ invalid_type_error: 'Estimated value must be a number' })
+      .nonnegative()
+      .max(9_999_999_999_999.99)
+      .optional(),
+    bidValue: z
+      .number({ invalid_type_error: 'Bid value must be a number' })
+      .nonnegative()
+      .max(9_999_999_999_999.99)
+      .optional(),
+    status: TenderStatusSchema.default('EOI'),
+    submissionDate: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    referenceNumber: z.string().trim().max(80).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .refine((v) => !(v.bidValue && v.estimatedValue && v.bidValue < 0), {
+    message: 'Bid value cannot be negative',
+    path: ['bidValue'],
+  })
+export type TenderCreateInput = z.infer<typeof TenderCreateSchema>
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 export const LoginInputSchema = z.object({

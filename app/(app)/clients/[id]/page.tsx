@@ -3,12 +3,15 @@ import Link from 'next/link'
 import { ArrowLeft, Building2, Target, Receipt } from 'lucide-react'
 import { getClientById } from '@/actions/clients'
 import { listProjectsForTenant, listClientsForPicker } from '@/actions/projects'
+import { listTendersForTenant } from '@/actions/tenders'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { ContactActionButtons } from '@/components/clients/contact-action-buttons'
 import { ContactsEditor } from '@/components/clients/contacts-editor'
 import { NotesEditor } from '@/components/clients/notes-editor'
 import { ProjectCard } from '@/components/projects/project-card'
 import { CreateProjectButton } from '@/components/projects/create-project-modal'
+import { TenderCard } from '@/components/tenders/tender-card'
+import { CreateTenderButton } from '@/components/tenders/create-tender-modal'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate } from '@/lib/date'
 
@@ -23,9 +26,10 @@ export default async function ClientDetailPage({
   const client = await getClientById(id)
   if (!client) notFound()
 
-  const [projects, allClients] = await Promise.all([
+  const [projects, allClients, tenders] = await Promise.all([
     listProjectsForTenant({ clientId: client.id }),
     listClientsForPicker(),
+    listTendersForTenant({ clientId: client.id }),
   ])
 
   return (
@@ -107,11 +111,30 @@ export default async function ClientDetailPage({
           )}
         </TabsContent>
         <TabsContent value="tenders">
-          <TabPlaceholder
-            icon={Target}
-            title="Tenders land in Phase 4"
-            body="Active and historical tenders for this client will appear here, with stage and submission deadline."
-          />
+          {tenders.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card p-10 text-center">
+              <Target className="h-8 w-8 text-muted-foreground/40" />
+              <h3 className="text-sm font-medium">No tenders for this client yet</h3>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Track an EOI or live bid against this client.
+              </p>
+              <CreateTenderButton clients={allClients} presetClientId={client.id} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {tenders.length} tender{tenders.length === 1 ? '' : 's'} for {client.name}
+                </p>
+                <CreateTenderButton clients={allClients} presetClientId={client.id} />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {tenders.map((t) => (
+                  <TenderCard key={t.id} tender={t} clientsForPicker={allClients} />
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="bills">
           <TabPlaceholder
