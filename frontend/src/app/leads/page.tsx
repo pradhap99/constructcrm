@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { TrendingUp, Plus } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { leads } from '@/lib/api'
+import { ConvertToProjectButton } from './convert-to-project-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -397,7 +398,7 @@ export default function LeadsPage() {
                   <SelectItem value="new">New</SelectItem>
                   <SelectItem value="contacted">Contacted</SelectItem>
                   <SelectItem value="qualified">Qualified</SelectItem>
-                  <SelectItem value="proposal_sent">Proposal Sent</SelectItem>
+                  <SelectItem value="proposal">Proposal</SelectItem>
                   <SelectItem value="negotiation">Negotiation</SelectItem>
                   <SelectItem value="won">Won</SelectItem>
                   <SelectItem value="lost">Lost</SelectItem>
@@ -415,10 +416,9 @@ export default function LeadsPage() {
                 <SelectContent>
                   <SelectItem value="website">Website</SelectItem>
                   <SelectItem value="referral">Referral</SelectItem>
+                  <SelectItem value="social_media">Social Media</SelectItem>
                   <SelectItem value="cold_call">Cold Call</SelectItem>
                   <SelectItem value="exhibition">Exhibition</SelectItem>
-                  <SelectItem value="tender_portal">Tender Portal</SelectItem>
-                  <SelectItem value="broker">Broker</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
