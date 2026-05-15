@@ -39,6 +39,10 @@ def create_billing(item_in: BillingCreate, db: Session = Depends(get_db), curren
 
 @router.put("/{item_id}", response_model=BillingResponse)
 def update_billing(item_id: str, item_in: BillingUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        _item_id = uuid.UUID(item_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
     item = db.query(Billing).filter(Billing.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Billing not found")
@@ -51,6 +55,10 @@ def update_billing(item_id: str, item_in: BillingUpdate, db: Session = Depends(g
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_billing(item_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        _item_id = uuid.UUID(item_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
     item = db.query(Billing).filter(Billing.id == _item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Billing not found")

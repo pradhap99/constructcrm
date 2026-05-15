@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Banknote, TrendingUp, Clock, CheckCircle2, Plus, Loader2, Bot } from 'lucide-react'
-import { cn, formatCurrencyCr, formatDate } from '@/lib/utils'
-import { billing as billingApi, agentJobs } from '@/lib/api'
+import { Banknote, TrendingUp, Clock, CheckCircle2, Plus, Loader2, Bot, AlertCircle } from 'lucide-react'
+import { cn, formatCurrencyCr, formatDate, formatCurrency } from '@/lib/utils'
+import { billing as billingApi, agentJobs, projects as projectsApi } from '@/lib/api'
+import { computeBill } from '@/lib/bill-math'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,10 +24,11 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  running_account:   { label: 'Running Account',   color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' },
-  milestone:         { label: 'Milestone',         color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
-  final:             { label: 'Final',             color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
-  advance_recovery:  { label: 'Advance Recovery',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+  running_account: { label: 'Running Account', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' },
+  milestone:       { label: 'Milestone',       color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
+  final:           { label: 'Final',           color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
+  advance:         { label: 'Advance',         color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+  retention:       { label: 'Retention',       color: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300' },
 }
 
 const STATUS_FILTERS = ['All', 'draft', 'submitted', 'certified', 'paid', 'disputed'] as const
@@ -34,15 +36,28 @@ const STATUS_FILTERS = ['All', 'draft', 'submitted', 'certified', 'paid', 'dispu
 const EMPTY_FORM = {
   billing_number: '',
   project_id: '',
-  submitted_by: '',
   billing_type: 'running_account',
   bill_number: '',
   billing_period_start: '',
   billing_period_end: '',
   gross_amount: '',
-  retention_percentage: '5',
-  gst_amount: '0',
+  gst_rate: '18',
+  tds_rate: '2',
+  retention_rate: '5',
+  mob_advance: '0',
+  other_deductions: '0',
   notes: '',
+}
+
+const DEDUCTION_KINDS = ['tds', 'mob_advance', 'other'] as const
+type DeductionKind = typeof DEDUCTION_KINDS[number]
+
+function pickDeduction(
+  deductions: Array<{ kind?: string; amount?: number; rate?: number }> | null | undefined,
+  kind: DeductionKind,
+): { amount: number; rate?: number } {
+  const row = (deductions ?? []).find((d) => d?.kind === kind)
+  return { amount: Number(row?.amount ?? 0), rate: row?.rate }
 }
 
 // ── Chase Result Modal ───────────────────────────────────────────────────────
@@ -92,14 +107,44 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState<string>('All')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [submitterId, setSubmitterId] = useState<string | null>(null)
   const [chaseModal, setChaseModal] = useState<{ open: boolean; loading: boolean; result: string | null }>({
     open: false, loading: false, result: null,
   })
+
+  // The current user's UUID is captured at login and stored in localStorage.
+  // We use it for the `submitted_by` FK — the form no longer asks users to
+  // type their own UUID (that was a real bug, see the bug report in the PR).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem('auth_user')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: string }
+        if (parsed?.id) setSubmitterId(parsed.id)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['billing'],
     queryFn: () => billingApi.list(),
   })
+
+  const { data: projectsResp } = useQuery({
+    queryKey: ['projects-for-billing'],
+    queryFn: () => projectsApi.list({ limit: 500 }),
+  })
+
+  // The projects endpoint historically returns either { items, total } or a
+  // bare array. Handle both.
+  const projectOptions: Array<{ id: string; name: string; code?: string }> = useMemo(() => {
+    const raw = projectsResp?.data as any
+    const list = Array.isArray(raw) ? raw : (raw?.items ?? [])
+    return list as Array<{ id: string; name: string; code?: string }>
+  }, [projectsResp])
 
   const items: any[] = (data?.data as any) ?? []
 
@@ -124,18 +169,76 @@ export default function BillingPage() {
     onError: () => toast.error('Failed to create bill'),
   })
 
+  // Live tax breakdown — same computeBill() that runs at insert time.
+  const breakdown = useMemo(() => {
+    try {
+      return computeBill({
+        grossAmount: Number(form.gross_amount) || 0,
+        gstRate: Number(form.gst_rate) || 0,
+        tdsRate: Number(form.tds_rate) || 0,
+        retentionRate: Number(form.retention_rate) || 0,
+        mobAdvanceRecovery: Number(form.mob_advance) || 0,
+        otherDeductions: Number(form.other_deductions) || 0,
+      })
+    } catch {
+      return null
+    }
+  }, [
+    form.gross_amount,
+    form.gst_rate,
+    form.tds_rate,
+    form.retention_rate,
+    form.mob_advance,
+    form.other_deductions,
+  ])
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.billing_number || !form.project_id || !form.submitted_by || !form.gross_amount) {
-      toast.error('Please fill in all required fields')
+    if (!form.billing_number || !form.project_id || !form.gross_amount) {
+      toast.error('Bill number, project, and gross amount are required')
       return
     }
+    if (!submitterId) {
+      toast.error('Could not identify your user — please sign in again')
+      return
+    }
+    if (!breakdown) {
+      toast.error('Rates must be between 0 and 50 percent')
+      return
+    }
+    // Persist the per-kind deductions in the existing `deductions` JSONB
+    // column. tds carries its rate so we can audit later; mob/other are flat.
+    const deductions = [
+      breakdown.tdsAmount > 0
+        ? { kind: 'tds', rate: breakdown.tdsRate, amount: breakdown.tdsAmount }
+        : null,
+      breakdown.mobAdvanceRecovery > 0
+        ? { kind: 'mob_advance', amount: breakdown.mobAdvanceRecovery }
+        : null,
+      breakdown.otherDeductions > 0
+        ? { kind: 'other', amount: breakdown.otherDeductions }
+        : null,
+    ].filter(Boolean)
+
     createMutation.mutate({
-      ...form,
+      billing_number: form.billing_number,
+      project_id: form.project_id,
+      submitted_by: submitterId,
+      billing_type: form.billing_type,
       bill_number: form.bill_number ? Number(form.bill_number) : undefined,
-      gross_amount: Number(form.gross_amount),
-      retention_percentage: Number(form.retention_percentage),
-      gst_amount: Number(form.gst_amount),
+      billing_period_start: form.billing_period_start || undefined,
+      billing_period_end: form.billing_period_end || undefined,
+      gross_amount: breakdown.grossAmount,
+      gst_amount: breakdown.gstAmount,
+      retention_percentage: breakdown.retentionRate,
+      retention_amount: breakdown.retentionAmount,
+      net_amount: breakdown.netAmount,
+      // total_amount = the face value of the bill (gross + GST) before
+      // tenant-side deductions like TDS/retention/etc. Matches the
+      // semantics most accounting software uses.
+      total_amount: breakdown.grossAmount + breakdown.gstAmount,
+      deductions,
+      notes: form.notes || undefined,
     })
   }
 
@@ -277,7 +380,9 @@ export default function BillingPage() {
                 return (
                   <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-3 py-3 font-mono font-semibold text-indigo-600 whitespace-nowrap">{b.billing_number}</td>
-                    <td className="px-3 py-3 text-gray-600 dark:text-gray-400 text-xs">{b.project_id}</td>
+                    <td className="px-3 py-3 text-gray-700 dark:text-gray-300 text-xs">
+                      {b.project_name ?? <span className="font-mono text-gray-400">{b.project_id?.slice(0, 8)}…</span>}
+                    </td>
                     <td className="px-3 py-3">
                       <span className={cn('px-2 py-1 rounded-full text-xs font-medium', tc?.color ?? 'bg-gray-100 text-gray-700')}>
                         {tc?.label ?? b.billing_type}
@@ -353,33 +458,32 @@ export default function BillingPage() {
                     <SelectItem value="running_account">Running Account</SelectItem>
                     <SelectItem value="milestone">Milestone</SelectItem>
                     <SelectItem value="final">Final</SelectItem>
-                    <SelectItem value="advance_recovery">Advance Recovery</SelectItem>
+                    <SelectItem value="advance">Advance</SelectItem>
+                    <SelectItem value="retention">Retention</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="project_id">Project ID <span className="text-red-500">*</span></Label>
-                <Input
-                  id="project_id"
-                  placeholder="e.g. proj_001"
-                  value={form.project_id}
-                  onChange={e => set('project_id', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="submitted_by">Submitted By <span className="text-red-500">*</span></Label>
-                <Input
-                  id="submitted_by"
-                  placeholder="Name"
-                  value={form.submitted_by}
-                  onChange={e => set('submitted_by', e.target.value)}
-                  required
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="project_id">Project <span className="text-red-500">*</span></Label>
+              <Select value={form.project_id} onValueChange={(v) => set('project_id', v)}>
+                <SelectTrigger id="project_id">
+                  <SelectValue placeholder={projectOptions.length === 0 ? 'Loading projects…' : 'Pick a project'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {projectOptions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.code ? `${p.code} — ${p.name}` : p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {projectOptions.length === 0 && (
+                <p className="text-[11px] text-gray-500">
+                  No projects yet — create one before raising a bill.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -427,28 +531,108 @@ export default function BillingPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="retention_percentage">Retention %</Label>
-                <Input
-                  id="retention_percentage"
-                  type="number"
-                  placeholder="5"
-                  value={form.retention_percentage}
-                  onChange={e => set('retention_percentage', e.target.value)}
-                />
+            {/* Rates + deductions */}
+            <fieldset className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 p-3 space-y-3">
+              <legend className="px-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                Rates &amp; deductions
+              </legend>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="gst_rate" className="text-[10px] uppercase tracking-widest text-gray-500">GST %</Label>
+                  <Input
+                    id="gst_rate"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={50}
+                    step={0.01}
+                    value={form.gst_rate}
+                    onChange={(e) => set('gst_rate', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="tds_rate" className="text-[10px] uppercase tracking-widest text-gray-500">TDS %</Label>
+                  <Input
+                    id="tds_rate"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={50}
+                    step={0.01}
+                    value={form.tds_rate}
+                    onChange={(e) => set('tds_rate', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="retention_rate" className="text-[10px] uppercase tracking-widest text-gray-500">Retention %</Label>
+                  <Input
+                    id="retention_rate"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={50}
+                    step={0.01}
+                    value={form.retention_rate}
+                    onChange={(e) => set('retention_rate', e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="gst_amount">GST Amount (₹)</Label>
-                <Input
-                  id="gst_amount"
-                  type="number"
-                  placeholder="0"
-                  value={form.gst_amount}
-                  onChange={e => set('gst_amount', e.target.value)}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="mob_advance" className="text-[10px] uppercase tracking-widest text-gray-500">Mob-advance recovery (₹)</Label>
+                  <Input
+                    id="mob_advance"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={form.mob_advance}
+                    onChange={(e) => set('mob_advance', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="other_deductions" className="text-[10px] uppercase tracking-widest text-gray-500">Other deductions (₹)</Label>
+                  <Input
+                    id="other_deductions"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={form.other_deductions}
+                    onChange={(e) => set('other_deductions', e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            </fieldset>
+
+            {/* Live breakdown */}
+            {breakdown ? (
+              <div className="rounded-lg border bg-gray-50 dark:bg-gray-900 p-3 text-xs">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                  Live breakdown — net updates as you type
+                </p>
+                <dl className="space-y-1.5">
+                  <Line label="Gross" value={formatCurrency(breakdown.grossAmount)} />
+                  <Line label={`+ GST (${breakdown.gstRate}%)`} value={formatCurrency(breakdown.gstAmount)} positive />
+                  <Line label={`− TDS (${breakdown.tdsRate}%)`} value={formatCurrency(breakdown.tdsAmount)} negative />
+                  <Line label={`− Retention (${breakdown.retentionRate}%)`} value={formatCurrency(breakdown.retentionAmount)} negative />
+                  {breakdown.mobAdvanceRecovery > 0 && (
+                    <Line label="− Mob-advance recovery" value={formatCurrency(breakdown.mobAdvanceRecovery)} negative />
+                  )}
+                  {breakdown.otherDeductions > 0 && (
+                    <Line label="− Other deductions" value={formatCurrency(breakdown.otherDeductions)} negative />
+                  )}
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-1.5 text-sm font-semibold">
+                    <Line label="Net" value={formatCurrency(breakdown.netAmount)} />
+                  </div>
+                </dl>
+              </div>
+            ) : (
+              <p className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                One of the rates is out of range (0–50%). Fix it to see the live breakdown.
+              </p>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="notes">Notes</Label>
@@ -481,6 +665,33 @@ export default function BillingPage() {
         result={chaseModal.result}
         loading={chaseModal.loading}
       />
+    </div>
+  )
+}
+
+function Line({
+  label,
+  value,
+  positive,
+  negative,
+}: {
+  label: string
+  value: string
+  positive?: boolean
+  negative?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt
+        className={cn(
+          positive && 'text-emerald-700 dark:text-emerald-400',
+          negative && 'text-rose-700 dark:text-rose-400',
+          !positive && !negative && 'text-gray-500',
+        )}
+      >
+        {label}
+      </dt>
+      <dd className="font-mono">{value}</dd>
     </div>
   )
 }

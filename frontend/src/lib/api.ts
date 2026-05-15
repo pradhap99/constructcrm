@@ -152,11 +152,14 @@ export const changeOrders = {
   create: (data: Partial<ChangeOrder>) => apiClient.post<ChangeOrder>('/change-orders', data),
 }
 
-// Billing
+// Billing — list uses the enriched /bills view (returns project_name); writes
+// go to the CRUD /billings router. Both back the same `billings` table.
 export const billing = {
   list: (params?: Record<string, string | number>) =>
-    apiClient.get<PaginatedResponse<Bill>>('/billing', { params }),
-  create: (data: Partial<Bill>) => apiClient.post<Bill>('/billing', data),
+    apiClient.get<PaginatedResponse<Bill>>('/bills', { params }),
+  create: (data: Partial<Bill>) => apiClient.post<Bill>('/billings', data),
+  update: (id: string, data: Partial<Bill>) => apiClient.put<Bill>(`/billings/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/billings/${id}`),
 }
 
 // Analytics

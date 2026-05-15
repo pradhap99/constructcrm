@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Brain, Building2, Target, ClipboardList,
   FileSearch, Users, ShoppingCart, Package, Receipt,
   CalendarDays, BarChart3, FileCheck, GitBranch, Wallet,
-  TrendingUp, Layers,
+  TrendingUp, Layers, Sun,
 } from 'lucide-react'
 
 export type NavItem = {
@@ -20,7 +20,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, keywords: ['home', 'overview', 'kpi'] },
+      { href: '/today', label: 'Today', icon: Sun, keywords: ['home', 'command center', 'overdue', 'closing'] },
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, keywords: ['kpi', 'analytics overview'] },
       {
         href: '/ai-reader', label: 'AI Draft Reader', icon: Brain,
         badge: '★ AI', badgeClass: 'bg-amber-100 text-amber-700',
@@ -33,7 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Sales',
     items: [
       { href: '/projects', label: 'Projects', icon: Building2, keywords: ['site', 'job'] },
-      { href: '/leads', label: 'Leads', icon: Target, keywords: ['pipeline', 'crm', 'prospects'] },
+      { href: '/leads', label: 'Tenders / Leads', icon: Target, keywords: ['tender', 'pipeline', 'crm', 'prospects', 'bid', 'eoi'] },
     ],
   },
   {
