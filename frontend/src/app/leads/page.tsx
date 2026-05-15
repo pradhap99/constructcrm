@@ -25,8 +25,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
-type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal_sent' | 'negotiation' | 'won' | 'lost'
-type LeadSource = 'website' | 'referral' | 'cold_call' | 'exhibition' | 'tender_portal' | 'broker' | 'other'
+type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
+type LeadSource = 'website' | 'referral' | 'social_media' | 'cold_call' | 'exhibition' | 'other'
 
 interface Lead {
   id: string
@@ -47,23 +47,22 @@ interface Lead {
 }
 
 const STATUS_CONFIG: Record<LeadStatus, { label: string; color: string }> = {
-  new:           { label: 'New',           color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  contacted:     { label: 'Contacted',     color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-  qualified:     { label: 'Qualified',     color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  proposal_sent: { label: 'Proposal Sent', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  negotiation:   { label: 'Negotiation',   color: 'bg-orange-100 text-orange-700 border-orange-200' },
-  won:           { label: 'Won',           color: 'bg-green-100 text-green-700 border-green-200' },
-  lost:          { label: 'Lost',          color: 'bg-red-100 text-red-400 border-red-200' },
+  new:         { label: 'New',         color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  contacted:   { label: 'Contacted',   color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  qualified:   { label: 'Qualified',   color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  proposal:    { label: 'Proposal',    color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  negotiation: { label: 'Negotiation', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  won:         { label: 'Won',         color: 'bg-green-100 text-green-700 border-green-200' },
+  lost:        { label: 'Lost',        color: 'bg-red-100 text-red-700 border-red-200' },
 }
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
-  website:       'Website',
-  referral:      'Referral',
-  cold_call:     'Cold Call',
-  exhibition:    'Exhibition',
-  tender_portal: 'Tender Portal',
-  broker:        'Broker',
-  other:         'Other',
+  website:      'Website',
+  referral:     'Referral',
+  social_media: 'Social Media',
+  cold_call:    'Cold Call',
+  exhibition:   'Exhibition',
+  other:        'Other',
 }
 
 const STATUS_FILTERS: { label: string; value: LeadStatus | 'all' }[] = [
@@ -274,6 +273,12 @@ export default function LeadsPage() {
                     </div>
                   )}
                 </div>
+
+                {lead.status === 'won' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <ConvertToProjectButton lead={lead as never} />
+                  </div>
+                )}
               </div>
             )
           })}
