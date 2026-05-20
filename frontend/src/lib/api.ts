@@ -31,6 +31,8 @@ apiClient.interceptors.response.use(
   }
 )
 
+export { extractErrorMessage } from './error-message'
+
 // Auth
 export const auth = {
   login: (email: string, password: string) =>
