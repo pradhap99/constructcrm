@@ -4,11 +4,20 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { HardHat, Eye, EyeOff, CheckCircle2, Shield, Zap } from 'lucide-react'
-import { auth } from '@/lib/api'
+import { auth, extractErrorMessage } from '@/lib/api'
+import { AuthErrorBoundary } from '@/components/AuthErrorBoundary'
 
 type Mode = 'login' | 'register'
 
 export default function LoginPage() {
+  return (
+    <AuthErrorBoundary>
+      <LoginPageInner />
+    </AuthErrorBoundary>
+  )
+}
+
+function LoginPageInner() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
   const [loading, setLoading] = useState(false)
@@ -53,13 +62,11 @@ export default function LoginPage() {
     try {
       await doLogin(loginEmail, loginPassword)
     } catch (err: unknown) {
-      const error = err as { response?: { status?: number; data?: { detail?: string } } }
-      if (error.response?.status === 401) {
+      const status = (err as { response?: { status?: number } }).response?.status
+      if (status === 401) {
         toast.error('Invalid email or password. Please try again.')
-      } else if (error.response?.data?.detail) {
-        toast.error(error.response.data.detail)
       } else {
-        toast.error('Login failed. Please check your connection and try again.')
+        toast.error(extractErrorMessage(err, 'Login failed. Please check your connection and try again.'))
       }
     } finally {
       setLoading(false)
@@ -87,14 +94,12 @@ export default function LoginPage() {
       toast.success('Account created! Signing you in...')
       await doLogin(regEmail, regPassword)
     } catch (err: unknown) {
-      const error = err as { response?: { status?: number; data?: { detail?: string } } }
-      if (error.response?.status === 400 || error.response?.status === 409) {
-        toast.error(error.response.data?.detail ?? 'Email already registered. Please sign in.')
-      } else if (error.response?.data?.detail) {
-        toast.error(error.response.data.detail)
-      } else {
-        toast.error('Registration failed. Please try again.')
-      }
+      const status = (err as { response?: { status?: number } }).response?.status
+      const fallback =
+        status === 400 || status === 409
+          ? 'Email already registered. Please sign in.'
+          : 'Registration failed. Please try again.'
+      toast.error(extractErrorMessage(err, fallback))
     } finally {
       setLoading(false)
     }
